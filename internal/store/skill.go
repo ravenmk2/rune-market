@@ -80,6 +80,12 @@ func (s *SkillStore) UpdateStatus(ctx context.Context, id, status string, update
 	return err
 }
 
+func (s *SkillStore) UpdateOfficial(ctx context.Context, id string, official bool, updatedAt time.Time) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE skill SET official = ?, updated_at = ? WHERE id = ?`, official, updatedAt, id)
+	return err
+}
+
 func (s *SkillStore) IncrDownload(ctx context.Context, id string) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE skill SET download_count = download_count + 1 WHERE id = ?`, id)

@@ -219,6 +219,9 @@ func (s *Designs) List(ctx context.Context, f ListFilter) (items []DesignItem, t
 	args := []any{}
 	if f.PublicOnly {
 		where = append(where, `d.status = 'published'`)
+	} else if f.Status != "" {
+		where = append(where, `d.status = ?`)
+		args = append(args, f.Status)
 	}
 	if f.OwnerID != "" {
 		where = append(where, `d.owner_id = ?`)

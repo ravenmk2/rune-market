@@ -47,6 +47,7 @@ type ListFilter struct {
 	Query      string
 	Tag        string
 	Official   bool
+	Status     string // "" = any; a status value for admin views
 	Sort       string // "" (updated) | "downloads"
 	Page       int
 	PageSize   int
@@ -234,6 +235,9 @@ func (s *Skills) List(ctx context.Context, f ListFilter) (items []SkillItem, tot
 	args := []any{}
 	if f.PublicOnly {
 		where = append(where, `s.status = 'published'`)
+	} else if f.Status != "" {
+		where = append(where, `s.status = ?`)
+		args = append(args, f.Status)
 	}
 	if f.OwnerID != "" {
 		where = append(where, `s.owner_id = ?`)

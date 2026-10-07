@@ -13,6 +13,13 @@ import { MySkillsPage } from "./pages/mine/MySkillsPage";
 import { MyDesignsPage } from "./pages/mine/MyDesignsPage";
 import { EditSkillPage } from "./pages/mine/EditSkillPage";
 import { EditDesignPage } from "./pages/mine/EditDesignPage";
+import { AdminLayout } from "./pages/admin/AdminLayout";
+import { OverviewPage } from "./pages/admin/OverviewPage";
+import { UsersPage } from "./pages/admin/UsersPage";
+import { UserNewPage } from "./pages/admin/UserNewPage";
+import { AdminSkillsPage } from "./pages/admin/AdminSkillsPage";
+import { AdminDesignsPage } from "./pages/admin/AdminDesignsPage";
+import { SettingsPage } from "./pages/admin/SettingsPage";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { RegisterPage } from "./pages/auth/RegisterPage";
 import { SetupWizard } from "./pages/setup/SetupWizard";
@@ -78,6 +85,14 @@ export default function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route index element={<OverviewPage />} />
+            <Route path="users" element={<UsersPage />} />
+            <Route path="users/new" element={<UserNewPage />} />
+            <Route path="skills" element={<AdminSkillsPage />} />
+            <Route path="designs" element={<AdminDesignsPage />} />
+            <Route path="settings" element={<SettingsPage />} />
           </Route>
           <Route path="/setup" element={<Navigate to="/" replace />} />
         </Routes>

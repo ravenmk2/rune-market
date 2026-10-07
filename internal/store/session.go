@@ -68,3 +68,16 @@ func (s *SessionStore) DeleteExpired(ctx context.Context) (int64, error) {
 	}
 	return res.RowsAffected()
 }
+
+// DeleteByUserID invalidates all sessions of one user (password reset,
+// disable, admin actions).
+func (s *SessionStore) DeleteByUserID(ctx context.Context, userID string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM session WHERE user_id = ?`, userID)
+	return err
+}
+
+// DeleteAll invalidates every session (master key regeneration, §13).
+func (s *SessionStore) DeleteAll(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM session`)
+	return err
+}

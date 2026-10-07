@@ -85,6 +85,12 @@ func (s *DesignmdStore) UpdateStatus(ctx context.Context, id, status string, upd
 	return err
 }
 
+func (s *DesignmdStore) UpdateOfficial(ctx context.Context, id string, official bool, updatedAt time.Time) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE designmd SET official = ?, updated_at = ? WHERE id = ?`, official, updatedAt, id)
+	return err
+}
+
 func (s *DesignmdStore) IncrDownload(ctx context.Context, id string) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE designmd SET download_count = download_count + 1 WHERE id = ?`, id)

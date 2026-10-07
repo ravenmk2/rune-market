@@ -309,6 +309,7 @@ CREATE TABLE setting (
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
+| GET | `/site` | 站点名称/描述(公开,顶栏品牌读取) |
 | GET | `/skills?q=&tag=&official=&sort=&page=` | 列表(卡片所需字段) |
 | GET | `/skills/{ns}/{name}` | 详情(latest 版本元数据 + 统计) |
 | GET | `/skills/{ns}/{name}/versions` | 版本列表 |

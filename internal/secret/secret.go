@@ -28,7 +28,13 @@ func LoadOrCreate(dataDir string) ([]byte, error) {
 	if !errors.Is(err, fs.ErrNotExist) {
 		return nil, fmt.Errorf("secret: read: %w", err)
 	}
+	return Regenerate(dataDir)
+}
 
+// Regenerate writes a fresh random key with 0600 permissions (§13:
+// invalidates all sessions; the admin endpoint additionally wipes the
+// session table).
+func Regenerate(dataDir string) ([]byte, error) {
 	key := make([]byte, 32)
 	if _, err := rand.Read(key); err != nil {
 		return nil, fmt.Errorf("secret: rand: %w", err)
@@ -36,7 +42,8 @@ func LoadOrCreate(dataDir string) ([]byte, error) {
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		return nil, fmt.Errorf("secret: create data dir: %w", err)
 	}
-	if err := os.WriteFile(p, []byte(hex.EncodeToString(key)), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dataDir, fileName),
+		[]byte(hex.EncodeToString(key)), 0o600); err != nil {
 		return nil, fmt.Errorf("secret: write: %w", err)
 	}
 	return key, nil

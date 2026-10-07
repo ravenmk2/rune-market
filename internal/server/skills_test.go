@@ -50,7 +50,7 @@ func newSkillsEnv(t *testing.T) *skillsEnv {
 	deps := testDeps(t)
 	skillsH := NewSkillsHandler(hub.NewSkills(db, store.DialectSQLite, blobs), stores.Settings, blobs, deps.Logger)
 
-	r := NewNormalEngine(deps, authSvc, skillsH, nil)
+	r := NewNormalEngine(deps, authSvc, skillsH, nil, nil, nil)
 
 	env := &skillsEnv{engine: r, stores: stores}
 	env.cookie = env.registerLogin(t, "raven", "Raven")
@@ -112,6 +112,42 @@ func (e *skillsEnv) doRaw(t *testing.T, method, path string, body []byte, cookie
 	w := httptest.NewRecorder()
 	e.engine.ServeHTTP(w, req)
 	return w
+}
+
+// zipContentsEqual compares two archives by entry names and contents, not
+// raw bytes (zip headers carry timestamps with 2-second granularity).
+func zipContentsEqual(t *testing.T, a, b []byte) bool {
+	t.Helper()
+	read := func(data []byte) map[string]string {
+		zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+		if err != nil {
+			t.Fatalf("open zip: %v", err)
+		}
+		out := map[string]string{}
+		for _, f := range zr.File {
+			rc, err := f.Open()
+			if err != nil {
+				t.Fatal(err)
+			}
+			content, err := io.ReadAll(rc)
+			_ = rc.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+			out[f.Name] = string(content)
+		}
+		return out
+	}
+	ma, mb := read(a), read(b)
+	if len(ma) != len(mb) {
+		return false
+	}
+	for name, content := range ma {
+		if mb[name] != content {
+			return false
+		}
+	}
+	return true
 }
 
 func decode(t *testing.T, w *httptest.ResponseRecorder) map[string]any {
@@ -333,7 +369,7 @@ func TestSkillLifecycleAPI(t *testing.T) {
 		!strings.Contains(w.Header().Get("Content-Disposition"), "pdf-processing-1.0.0.zip") {
 		t.Fatalf("download: %d %v", w.Code, w.Header())
 	}
-	if !bytes.Equal(w.Body.Bytes(), buildSkillZip(t, "pdf-processing", "Extract PDFs")) {
+	if !zipContentsEqual(t, w.Body.Bytes(), buildSkillZip(t, "pdf-processing", "Extract PDFs")) {
 		t.Fatal("download content mismatch")
 	}
 	w = env.do(t, http.MethodGet, "/api/v1/skills/raven/pdf-processing", "", nil, nil)
