@@ -1,0 +1,10 @@
+.vscode/
+.idea/
+.agents/
+.playwright-cli/
+
+/dist/
+/web/dist/
+
+/conf/
+/data/
