@@ -60,7 +60,7 @@ func csrf() map[string]string {
 
 func TestSecurityHeaders(t *testing.T) {
 	deps := testDeps(t)
-	r := NewNormalEngine(deps, nil, nil, nil, nil, nil)
+	r := NewNormalEngine(deps, nil, nil, nil, nil, nil, nil)
 	w := do(t, r, http.MethodGet, "/", "", nil)
 	if got := w.Header().Get("X-Content-Type-Options"); got != "nosniff" {
 		t.Fatalf("X-Content-Type-Options: %q", got)
@@ -75,7 +75,7 @@ func TestSecurityHeaders(t *testing.T) {
 
 func TestSPAFallback(t *testing.T) {
 	deps := testDeps(t)
-	r := NewNormalEngine(deps, nil, nil, nil, nil, nil)
+	r := NewNormalEngine(deps, nil, nil, nil, nil, nil, nil)
 
 	// static hit
 	w := do(t, r, http.MethodGet, "/assets/app-1.js", "", nil)
@@ -140,7 +140,7 @@ func TestSetupStateMachine(t *testing.T) {
 	onComplete := func(ctx context.Context, db *sql.DB, cfg *config.Config) error {
 		stores := store.NewStores(db, cfg.Database.Driver)
 		authSvc := auth.NewService(stores.Users, stores.Sessions, stores.Settings)
-		sw.Swap(NewNormalEngine(deps, authSvc, nil, nil, nil, nil))
+		sw.Swap(NewNormalEngine(deps, authSvc, nil, nil, nil, nil, nil))
 		completed = true
 		return nil
 	}

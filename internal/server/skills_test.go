@@ -50,7 +50,7 @@ func newSkillsEnv(t *testing.T) *skillsEnv {
 	deps := testDeps(t)
 	skillsH := NewSkillsHandler(hub.NewSkills(db, store.DialectSQLite, blobs), stores.Settings, blobs, deps.Logger)
 
-	r := NewNormalEngine(deps, authSvc, skillsH, nil, nil, nil)
+	r := NewNormalEngine(deps, authSvc, skillsH, nil, nil, nil, nil)
 
 	env := &skillsEnv{engine: r, stores: stores}
 	env.cookie = env.registerLogin(t, "raven", "Raven")

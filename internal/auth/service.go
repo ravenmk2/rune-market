@@ -235,6 +235,11 @@ func hashToken(token string) string {
 }
 
 func publicUser(u *store.User) gin.H {
+	return UserJSON(u)
+}
+
+// UserJSON is the public user representation used across endpoints.
+func UserJSON(u *store.User) gin.H {
 	return gin.H{
 		"id":         u.ID,
 		"username":   u.Username,

@@ -263,6 +263,6 @@ func newSkillsEnvWithDesigns(t *testing.T) *skillsEnv {
 	deps := testDeps(t)
 	skillsH := NewSkillsHandler(hub.NewSkills(stores.DB, store.DialectSQLite, blobs), stores.Settings, blobs, deps.Logger)
 	designsH := NewDesignsHandler(hub.NewDesigns(stores.DB, store.DialectSQLite, blobs), stores.Settings, blobs, deps.Logger)
-	env.engine = NewNormalEngine(deps, authSvc, skillsH, designsH, nil, nil)
+	env.engine = NewNormalEngine(deps, authSvc, skillsH, designsH, nil, nil, nil)
 	return env
 }

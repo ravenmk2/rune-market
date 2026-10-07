@@ -39,20 +39,9 @@ func (s *Storage) PutImage(ctx context.Context, q store.DBTX, r io.Reader) (sum 
 	if len(raw) > MaxImageUploadBytes {
 		return "", 0, fmt.Errorf("image exceeds %dMB limit", MaxImageUploadBytes>>20)
 	}
-	// magic sniff before any decoding (§13)
-	if !isPNG(raw) && !isJPEG(raw) {
-		return "", 0, errors.New("image must be PNG or JPEG")
-	}
-	cfg, format, err := image.DecodeConfig(bytes.NewReader(raw))
+	src, err := decodeUpload(raw)
 	if err != nil {
-		return "", 0, fmt.Errorf("cannot decode image config: %w", err)
-	}
-	if cfg.Width > MaxImageDimension || cfg.Height > MaxImageDimension {
-		return "", 0, fmt.Errorf("image dimensions exceed %dx%d", MaxImageDimension, MaxImageDimension)
-	}
-	src, _, err := image.Decode(bytes.NewReader(raw))
-	if err != nil {
-		return "", 0, fmt.Errorf("cannot decode %s image: %w", format, err)
+		return "", 0, err
 	}
 
 	var pngBuf bytes.Buffer
@@ -142,6 +131,26 @@ func (s *Storage) AddRef(ctx context.Context, q store.DBTX, sum, expectKind stri
 	_, err = q.ExecContext(ctx,
 		"UPDATE `blob` SET ref_count = ref_count + 1 WHERE sha256 = ?", sum)
 	return err
+}
+
+// decodeUpload runs the §13 preflight checks (magic sniff, DecodeConfig
+// dimension guard) and decodes the image.
+func decodeUpload(raw []byte) (image.Image, error) {
+	if !isPNG(raw) && !isJPEG(raw) {
+		return nil, errors.New("image must be PNG or JPEG")
+	}
+	cfg, format, err := image.DecodeConfig(bytes.NewReader(raw))
+	if err != nil {
+		return nil, fmt.Errorf("cannot decode image config: %w", err)
+	}
+	if cfg.Width > MaxImageDimension || cfg.Height > MaxImageDimension {
+		return nil, fmt.Errorf("image dimensions exceed %dx%d", MaxImageDimension, MaxImageDimension)
+	}
+	img, _, err := image.Decode(bytes.NewReader(raw))
+	if err != nil {
+		return nil, fmt.Errorf("cannot decode %s image: %w", format, err)
+	}
+	return img, nil
 }
 
 func isPNG(b []byte) bool {

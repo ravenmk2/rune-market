@@ -20,6 +20,8 @@ import { UserNewPage } from "./pages/admin/UserNewPage";
 import { AdminSkillsPage } from "./pages/admin/AdminSkillsPage";
 import { AdminDesignsPage } from "./pages/admin/AdminDesignsPage";
 import { SettingsPage } from "./pages/admin/SettingsPage";
+import { AccountSettingsPage } from "./pages/account/AccountSettingsPage";
+import { UserProfilePage } from "./pages/user/UserProfilePage";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { RegisterPage } from "./pages/auth/RegisterPage";
 import { SetupWizard } from "./pages/setup/SetupWizard";
@@ -82,6 +84,8 @@ export default function App() {
             <Route path="/mine/skills/:id/edit" element={<EditSkillPage />} />
             <Route path="/mine/designs" element={<MyDesignsPage />} />
             <Route path="/mine/designs/:id/edit" element={<EditDesignPage />} />
+            <Route path="/account" element={<AccountSettingsPage />} />
+            <Route path="/u/:username" element={<UserProfilePage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />

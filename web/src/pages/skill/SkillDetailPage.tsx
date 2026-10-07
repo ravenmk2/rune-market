@@ -333,7 +333,9 @@ function Sidebar({ skill, version }: { skill: SkillDetail; version?: VersionMeta
           <div className="row">
             <span className="k">作者</span>
             <span className="v">
-              {version?.author || skill.owner.nickname || skill.owner.username}{" "}
+              <Link to={`/u/${skill.owner.username}`}>
+                {version?.author || skill.owner.nickname || skill.owner.username}
+              </Link>{" "}
               <span className="muted">(@{skill.owner.username})</span>
             </span>
           </div>

@@ -155,6 +155,14 @@ func (s *UserStore) UpdatePassword(ctx context.Context, id, passwordHash string,
 	return err
 }
 
+// UpdateAvatar flips the has_avatar marker; updated_at changes on every
+// avatar write so ?v= cache keys invalidate (§11).
+func (s *UserStore) UpdateAvatar(ctx context.Context, id string, hasAvatar bool, updatedAt time.Time) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE user SET has_avatar = ?, updated_at = ? WHERE id = ?`, hasAvatar, updatedAt, id)
+	return err
+}
+
 // Delete removes the user row; sessions cascade via FK.
 func (s *UserStore) Delete(ctx context.Context, id string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM user WHERE id = ?`, id)

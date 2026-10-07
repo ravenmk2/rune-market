@@ -130,8 +130,9 @@ func buildNormalEngine(ctx context.Context, deps server.Deps, db *sql.DB, cfg *c
 	skillsH := server.NewSkillsHandler(skillsSvc, stores.Settings, blobs, deps.Logger)
 	designsSvc := hub.NewDesigns(db, cfg.Database.Driver, blobs)
 	designsH := server.NewDesignsHandler(designsSvc, stores.Settings, blobs, deps.Logger)
-	adminH := server.NewAdminHandler(stores, skillsSvc, designsSvc, deps.Logger,
+	adminH := server.NewAdminHandler(stores, skillsSvc, designsSvc, blobs, deps.Logger,
 		deps.Version, deps.DataDir, cfg.Database.Driver)
 	siteH := server.NewSiteHandler(stores.Settings)
-	return server.NewNormalEngine(deps, authSvc, skillsH, designsH, adminH, siteH), nil
+	accountH := server.NewAccountHandler(stores, skillsSvc, designsSvc, blobs, deps.Logger, deps.DataDir)
+	return server.NewNormalEngine(deps, authSvc, skillsH, designsH, adminH, siteH, accountH), nil
 }

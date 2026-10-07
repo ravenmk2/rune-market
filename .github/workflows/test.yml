@@ -1,0 +1,44 @@
+name: test
+
+on:
+  push:
+    branches: [master, develop, dev]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Create web/dist placeholder for //go:embed
+        run: mkdir -p web/dist && touch web/dist/index.html
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: v2.13
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Create web/dist placeholder for //go:embed
+        run: mkdir -p web/dist && touch web/dist/index.html
+        shell: bash
+      - name: go vet
+        run: go vet ./...
+        env:
+          CGO_ENABLED: 0
+      - name: go test
+        run: go test ./...
+        env:
+          CGO_ENABLED: 0

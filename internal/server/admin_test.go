@@ -24,10 +24,10 @@ func newAdminEnv(t *testing.T) *skillsEnv {
 	designsSvc := hub.NewDesigns(stores.DB, store.DialectSQLite, blobs)
 	skillsH := NewSkillsHandler(skillsSvc, stores.Settings, blobs, deps.Logger)
 	designsH := NewDesignsHandler(designsSvc, stores.Settings, blobs, deps.Logger)
-	adminH := NewAdminHandler(stores, skillsSvc, designsSvc, deps.Logger,
+	adminH := NewAdminHandler(stores, skillsSvc, designsSvc, blobs, deps.Logger,
 		"test-version", deps.DataDir, store.DialectSQLite)
 	env.engine = NewNormalEngine(deps, authSvc, skillsH, designsH, adminH,
-		NewSiteHandler(stores.Settings))
+		NewSiteHandler(stores.Settings), nil)
 	return env
 }
 

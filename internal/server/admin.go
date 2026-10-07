@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"errors"
 	"math/big"
@@ -14,6 +15,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/ravenmk2/rune-market/internal/auth"
+	"github.com/ravenmk2/rune-market/internal/blob"
 	"github.com/ravenmk2/rune-market/internal/hub"
 	"github.com/ravenmk2/rune-market/internal/secret"
 	"github.com/ravenmk2/rune-market/internal/store"
@@ -26,6 +28,7 @@ type AdminHandler struct {
 	stores  *store.Stores
 	skills  *hub.Skills
 	designs *hub.Designs
+	blobs   *blob.Storage
 	logger  *logrus.Logger
 	version string
 	dataDir string
@@ -33,11 +36,11 @@ type AdminHandler struct {
 }
 
 func NewAdminHandler(stores *store.Stores, skills *hub.Skills, designs *hub.Designs,
-	logger *logrus.Logger, version, dataDir, dialect string) *AdminHandler {
+	blobs *blob.Storage, logger *logrus.Logger, version, dataDir, dialect string) *AdminHandler {
 	return &AdminHandler{
 		apiSettings: apiSettings{settings: stores.Settings},
 		stores:      stores,
-		skills:      skills, designs: designs,
+		skills:      skills, designs: designs, blobs: blobs,
 		logger: logger, version: version, dataDir: dataDir, dialect: dialect,
 	}
 }
@@ -80,11 +83,16 @@ func (h *AdminHandler) overview(c *gin.Context) {
 		auth.Error(c, http.StatusInternalServerError, "internal", "failed to gather stats")
 		return
 	}
+	// §6.3: avatars are user-addressed and scanned on demand
+	avatarBytes, err := h.blobs.AvatarBytes()
+	if err != nil {
+		h.logger.WithError(err).Error("admin: avatar scan failed")
+	}
 	_, secretErr := os.Stat(filepath.Join(h.dataDir, "secret"))
 	c.JSON(http.StatusOK, gin.H{
 		"stats": gin.H{
 			"users": o.Users, "skills": o.Skills, "designs": o.Designs,
-			"storage_bytes": o.StorageBytes,
+			"storage_bytes": o.StorageBytes + avatarBytes,
 		},
 		"todos": gin.H{
 			"pending_users": o.PendingUsers, "pending_skills": o.PendingSkills,
@@ -346,30 +354,42 @@ func (h *AdminHandler) deleteUser(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
-
-	conn, err := h.stores.DB.Conn(ctx)
-	if err != nil {
+	if err := deleteUserAccount(ctx, h.stores, h.dialect, h.dataDir, target.ID); err != nil {
+		h.logger.WithError(err).Error("admin: delete user failed")
 		auth.Error(c, http.StatusInternalServerError, "internal", "failed to delete user")
 		return
+	}
+	h.logger.WithFields(logrus.Fields{
+		"actor": auth.CurrentUser(c).Username, "target": target.Username,
+	}).Info("admin: user deleted")
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// deleteUserAccount removes an account the §8.5 way: artifacts cascade to
+// taken_down (kept, so their owner_id dangles — the owner FK has no ON
+// DELETE action, therefore enforcement is paused on a dedicated
+// connection for this archival delete), sessions are removed explicitly,
+// and the avatar file group is deleted.
+func deleteUserAccount(ctx context.Context, stores *store.Stores, dialect, dataDir, targetID string) error {
+	conn, err := stores.DB.Conn(ctx)
+	if err != nil {
+		return err
 	}
 	defer func() { _ = conn.Close() }()
 
 	fkOff, fkOn := `PRAGMA foreign_keys = OFF`, `PRAGMA foreign_keys = ON`
-	if h.dialect == store.DialectMySQL {
+	if dialect == store.DialectMySQL {
 		fkOff, fkOn = `SET FOREIGN_KEY_CHECKS = 0`, `SET FOREIGN_KEY_CHECKS = 1`
 	}
 	if _, err := conn.ExecContext(ctx, fkOff); err != nil {
-		h.logger.WithError(err).Error("admin: disable fk checks failed")
-		auth.Error(c, http.StatusInternalServerError, "internal", "failed to delete user")
-		return
+		return err
 	}
 	// never leave a pooled connection with checks disabled
 	defer func() { _, _ = conn.ExecContext(ctx, fkOn) }()
 
 	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
-		auth.Error(c, http.StatusInternalServerError, "internal", "failed to delete user")
-		return
+		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 	now := store.Now()
@@ -378,42 +398,33 @@ func (h *AdminHandler) deleteUser(c *gin.Context) {
 		args []any
 	}{
 		{`UPDATE skill SET status = ?, updated_at = ? WHERE owner_id = ? AND status = ?`,
-			[]any{store.SkillStatusTakenDown, now, target.ID, store.SkillStatusPublished}},
+			[]any{store.SkillStatusTakenDown, now, targetID, store.SkillStatusPublished}},
 		{`UPDATE designmd SET status = ?, updated_at = ? WHERE owner_id = ? AND status = ?`,
-			[]any{store.DesignStatusTakenDown, now, target.ID, store.DesignStatusPublished}},
+			[]any{store.DesignStatusTakenDown, now, targetID, store.DesignStatusPublished}},
 		// FK enforcement is paused, so the session cascade will not fire;
 		// remove sessions explicitly
-		{`DELETE FROM session WHERE user_id = ?`, []any{target.ID}},
+		{`DELETE FROM session WHERE user_id = ?`, []any{targetID}},
 	} {
 		if _, err := tx.ExecContext(ctx, stmt.sql, stmt.args...); err != nil {
-			h.logger.WithError(err).Error("admin: cascade takedown failed")
-			auth.Error(c, http.StatusInternalServerError, "internal", "failed to delete user")
-			return
+			return err
 		}
 	}
-	if err := store.NewUserStore(tx).Delete(ctx, target.ID); err != nil {
-		h.logger.WithError(err).Error("admin: delete user row failed")
-		auth.Error(c, http.StatusInternalServerError, "internal", "failed to delete user")
-		return
+	if err := store.NewUserStore(tx).Delete(ctx, targetID); err != nil {
+		return err
 	}
 	if err := tx.Commit(); err != nil {
-		auth.Error(c, http.StatusInternalServerError, "internal", "failed to delete user")
-		return
+		return err
 	}
-	h.deleteAvatarFiles(target.ID)
-	h.logger.WithFields(logrus.Fields{
-		"actor": auth.CurrentUser(c).Username, "target": target.Username,
-	}).Info("admin: user deleted")
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	return deleteAvatarFiles(dataDir, targetID)
 }
 
-// deleteAvatarFiles removes the avatar file group (M5 introduces avatars;
-// the hook is in place per §11).
-func (h *AdminHandler) deleteAvatarFiles(userID string) {
-	matches, _ := filepath.Glob(filepath.Join(h.dataDir, "avatars", userID+"*.png"))
+// deleteAvatarFiles removes the avatar file group (§11).
+func deleteAvatarFiles(dataDir, userID string) error {
+	matches, _ := filepath.Glob(filepath.Join(dataDir, "avatars", userID+"*.png"))
 	for _, m := range matches {
 		_ = os.Remove(m)
 	}
+	return nil
 }
 
 // --- artifacts ---

@@ -244,7 +244,9 @@ function Sidebar({
           <div className="row">
             <span className="k">作者</span>
             <span className="v">
-              {design.owner.nickname || design.owner.username}{" "}
+              <Link to={`/u/${design.owner.username}`}>
+                {design.owner.nickname || design.owner.username}
+              </Link>{" "}
               <span className="muted">(@{design.owner.username})</span>
             </span>
           </div>

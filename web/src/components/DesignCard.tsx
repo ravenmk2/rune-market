@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import type { DesignListItem } from "../api/designs";
 import { OfficialBadge } from "./Badge";
 import { formatCount } from "../utils/format";
@@ -6,6 +6,7 @@ import { formatCount } from "../utils/format";
 const TINTS = ["tint-a", "tint-b", "tint-c", "tint-d"];
 
 export function DesignCard({ design, index = 0 }: { design: DesignListItem; index?: number }) {
+  const navigate = useNavigate();
   return (
     <Link className="card" to={`/d/${design.namespace}/${design.name}`}>
       <div className="card-thumb">
@@ -24,7 +25,17 @@ export function DesignCard({ design, index = 0 }: { design: DesignListItem; inde
             {design.name} {design.official && <OfficialBadge />}
           </div>
           <div className="card-owner">
-            {design.owner.nickname || design.owner.username} · v{design.latest_version}
+            <span
+              className="owner-link"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                navigate(`/u/${design.owner.username}`);
+              }}
+            >
+              {design.owner.nickname || design.owner.username}
+            </span>{" "}
+            · v{design.latest_version}
           </div>
         </div>
       </div>

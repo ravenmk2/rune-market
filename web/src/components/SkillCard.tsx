@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import type { SkillListItem } from "../api/skills";
 import { OfficialBadge } from "./Badge";
 import { Tag } from "./Tag";
@@ -7,6 +7,7 @@ import { formatCount, harnessLabel } from "../utils/format";
 const TINTS = ["tint-a", "tint-b", "tint-c", "tint-d"];
 
 export function SkillCard({ skill, index = 0 }: { skill: SkillListItem; index?: number }) {
+  const navigate = useNavigate();
   const harnessText =
     skill.harnesses && skill.harnesses.length > 0
       ? skill.harnesses.map(harnessLabel).join(" · ")
@@ -23,7 +24,17 @@ export function SkillCard({ skill, index = 0 }: { skill: SkillListItem; index?: 
             {skill.name} {skill.official && <OfficialBadge />}
           </div>
           <div className="card-owner">
-            {skill.owner.nickname || skill.owner.username} · v{skill.latest_version}
+            <span
+              className="owner-link"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                navigate(`/u/${skill.owner.username}`);
+              }}
+            >
+              {skill.owner.nickname || skill.owner.username}
+            </span>{" "}
+            · v{skill.latest_version}
           </div>
         </div>
       </div>
