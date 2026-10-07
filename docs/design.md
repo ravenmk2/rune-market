@@ -71,7 +71,8 @@ rune-market/
 │   └── release.yml            # goreleaser + GHCR 镜像
 ├── docs/
 │   └── design.md              # 本文档
-├── Dockerfile                 # 仅 COPY goreleaser 产物,不重复编译
+├── Dockerfile                 # 多阶段源码构建(web → app → runtime)
+├── Dockerfile.release         # 仅 COPY goreleaser 产物,不重复编译
 ├── go.mod / .golangci.yml / .goreleaser.yml / Makefile
 └── AGENTS.md / README.md / LICENSE
 ```
@@ -452,7 +453,7 @@ web/src/
 - **lint**:golangci-lint v2,默认集 + `misspell`/`unconvert`/`gofmt`/`goimports`;CI 固定小版本,且其构建 Go 版本必须 ≥ go.mod 目标版本,升级 Go 工具链时同步升级
 - **Test CI**(`.github/workflows/test.yml`):push 主干分支 + PR + 手动触发;lint job 与 test job 并行;test 矩阵 ubuntu/windows/macos,`CGO_ENABLED=0`,先 `go vet` 后 `go test`;Go 版本经 `go-version-file: go.mod` 读取;两 job 编译前创建 `web/dist` 占位文件(`mkdir -p web/dist && touch web/dist/index.html`)
 - **release**(`.goreleaser.yml` + `.github/workflows/release.yml` 两件套):tag `v*.*.*` 触发;goreleaser 固定 `~> v2`;linux/darwin/windows × amd64/arm64 交叉编译,windows 产物 zip、其余 tar.gz,产物名 `<name>_<version>_<os>_<arch>` + checksums.txt;changelog 从 Conventional Commits 生成(Features/Bug Fixes 两组,排除 docs/test/chore/ci/style/build 与合并提交),不维护 CHANGELOG.md;release 前先完成前端真实构建(dist 为真实产物)
-- **容器镜像**:goreleaser `dockers` + `docker_manifests` 直接打包已交叉编译的二进制(与归档产物同源同构建,不在 Dockerfile 内重复编译),GHCR 多架构 manifest,tag 为版本号(无 `v`)+ `latest`;Dockerfile 基于 alpine + ca-certificates,`COPY runemarket /usr/local/bin/`;容器内 `WORKDIR /app`,数据目录 `/app/data`(挂卷),EXPOSE 8080
+- **容器镜像**:双 Dockerfile 分工——`Dockerfile` 多阶段源码构建(node:24-alpine 前端 → golang:1.26-alpine 后端,`ARG VERSION/GOPROXY` 可调,供自托管用户 `docker build` 一键构建);`Dockerfile.release` 供 goreleaser `dockers` + `docker_manifests` 直接打包已交叉编译的二进制(与归档产物同源同构建,不在镜像内重复编译),GHCR 多架构 manifest,tag 为版本号(无 `v`)+ `latest`;两文件运行时层一致:alpine + ca-certificates,`COPY --chmod=755 runemarket /usr/local/bin/`;容器内 `WORKDIR /app`,数据目录 `/app/data`(挂卷),EXPOSE 8080
 - **本地构建**:`scripts/build.sh`(Git Bash 可执行):dist 占位 → 版本注入 → 六平台产物到 `dist/`;Makefile 仅提供 `lint` 便捷目标
 - **验证**:`goreleaser check` + `goreleaser release --snapshot --clean` 本地快照验证
 
@@ -483,3 +484,4 @@ web/src/
 13. 包间窄接口、main 集中组装;不做插件系统/事件总线/ORM
 14. 管理面板通栏布局;表单主按钮左对齐、行内操作右对齐
 15. 首版不做 Agent 拉取 API、不做下载量以外的统计
+16. 双 Dockerfile:`Dockerfile` 多阶段源码构建(自托管一键构建),`Dockerfile.release` 仅打包 goreleaser 产物(release 同源);运行时层保持一致

@@ -50,14 +50,14 @@ dockers:
   - id: runemarket-amd64
     image_templates:
       - "ghcr.io/ravenmk2/rune-market:{{ .Version }}-amd64"
-    dockerfile: Dockerfile
+    dockerfile: Dockerfile.release
     use: buildx
     build_flag_templates:
       - "--platform=linux/amd64"
   - id: runemarket-arm64
     image_templates:
       - "ghcr.io/ravenmk2/rune-market:{{ .Version }}-arm64"
-    dockerfile: Dockerfile
+    dockerfile: Dockerfile.release
     use: buildx
     build_flag_templates:
       - "--platform=linux/arm64"
