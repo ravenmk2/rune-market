@@ -5,6 +5,7 @@
 
 /dist/
 /web/dist/
+node_modules/
 
 /conf/
 /data/
