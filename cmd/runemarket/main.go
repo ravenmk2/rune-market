@@ -128,5 +128,7 @@ func buildNormalEngine(ctx context.Context, deps server.Deps, db *sql.DB, cfg *c
 	blobs := blob.New(deps.DataDir)
 	skillsSvc := hub.NewSkills(db, cfg.Database.Driver, blobs)
 	skillsH := server.NewSkillsHandler(skillsSvc, stores.Settings, blobs, deps.Logger)
-	return server.NewNormalEngine(deps, authSvc, skillsH), nil
+	designsSvc := hub.NewDesigns(db, cfg.Database.Driver, blobs)
+	designsH := server.NewDesignsHandler(designsSvc, stores.Settings, blobs, deps.Logger)
+	return server.NewNormalEngine(deps, authSvc, skillsH, designsH), nil
 }

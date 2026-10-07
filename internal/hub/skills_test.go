@@ -18,6 +18,7 @@ import (
 type testEnv struct {
 	db      *store.Stores
 	skills  *Skills
+	designs *Designs
 	blobs   *blob.Storage
 	dataDir string
 	owner   *store.User
@@ -52,7 +53,8 @@ func newTestEnv(t *testing.T) *testEnv {
 	blobs := blob.New(dataDir)
 	return &testEnv{
 		db: stores, skills: NewSkills(db, store.DialectSQLite, blobs),
-		blobs: blobs, dataDir: dataDir, owner: owner,
+		designs: NewDesigns(db, store.DialectSQLite, blobs),
+		blobs:   blobs, dataDir: dataDir, owner: owner,
 	}
 }
 

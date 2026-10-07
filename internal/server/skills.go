@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -25,14 +24,14 @@ import (
 
 // SkillsHandler serves the §8.3/§8.4 skill endpoints.
 type SkillsHandler struct {
-	hub      *hub.Skills
-	settings *store.SettingStore
-	blobs    *blob.Storage
-	logger   *logrus.Logger
+	apiSettings
+	hub    *hub.Skills
+	blobs  *blob.Storage
+	logger *logrus.Logger
 }
 
 func NewSkillsHandler(h *hub.Skills, settings *store.SettingStore, blobs *blob.Storage, logger *logrus.Logger) *SkillsHandler {
-	return &SkillsHandler{hub: h, settings: settings, blobs: blobs, logger: logger}
+	return &SkillsHandler{apiSettings: apiSettings{settings: settings}, hub: h, blobs: blobs, logger: logger}
 }
 
 // RegisterRoutes mounts public routes on api and authenticated routes on
@@ -53,44 +52,6 @@ func (h *SkillsHandler) RegisterRoutes(api, apiAuth *gin.RouterGroup) {
 	apiAuth.POST("/skills/:id/takedown", h.takedown)
 	apiAuth.POST("/skills/:id/restore", h.restore)
 	apiAuth.DELETE("/skills/:id", h.delete)
-}
-
-// --- settings helpers ---
-
-func (h *SkillsHandler) setting(ctx context.Context, key, def string) string {
-	v, err := h.settings.Get(ctx, key)
-	if err != nil {
-		return def
-	}
-	return v
-}
-
-func (h *SkillsHandler) boolSetting(ctx context.Context, key string, def bool) bool {
-	v, err := strconv.ParseBool(h.setting(ctx, key, strconv.FormatBool(def)))
-	if err != nil {
-		return def
-	}
-	return v
-}
-
-func (h *SkillsHandler) intSetting(ctx context.Context, key string, def int) int {
-	v, err := strconv.Atoi(h.setting(ctx, key, strconv.Itoa(def)))
-	if err != nil || v <= 0 {
-		return def
-	}
-	return v
-}
-
-// requireBrowseAuth enforces anonymous_browse=off (§8.3).
-func (h *SkillsHandler) requireBrowseAuth(c *gin.Context) bool {
-	if h.boolSetting(c.Request.Context(), "anonymous_browse", true) {
-		return true
-	}
-	if auth.CurrentUser(c) != nil {
-		return true
-	}
-	auth.Error(c, http.StatusUnauthorized, "unauthenticated", "login required")
-	return false
 }
 
 // --- response shaping (contract shapes) ---
@@ -157,7 +118,7 @@ func (h *SkillsHandler) list(c *gin.Context) {
 		Official:   c.Query("official") == "true" || c.Query("official") == "1",
 		Sort:       c.Query("sort"),
 		Page:       page,
-		PageSize:   h.intSetting(ctx, "page_size", 20),
+		PageSize:   h.getInt(ctx, "page_size", 20),
 		PublicOnly: true,
 	})
 	if err != nil {
@@ -170,7 +131,7 @@ func (h *SkillsHandler) list(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"items": out, "total": total,
-		"page": page, "page_size": h.intSetting(ctx, "page_size", 20),
+		"page": page, "page_size": h.getInt(ctx, "page_size", 20),
 	})
 }
 
@@ -332,7 +293,7 @@ func (h *SkillsHandler) download(c *gin.Context) {
 	if !h.requireBrowseAuth(c) {
 		return
 	}
-	if !h.boolSetting(c.Request.Context(), "anonymous_download", true) &&
+	if !h.getBool(c.Request.Context(), "anonymous_download", true) &&
 		auth.CurrentUser(c) == nil {
 		auth.Error(c, http.StatusUnauthorized, "unauthenticated", "login required")
 		return
@@ -365,7 +326,7 @@ func (h *SkillsHandler) download(c *gin.Context) {
 // saveUpload streams the raw body to a temp file, enforcing upload_max_mb,
 // and returns its path, size and sha256. Caller must call cleanup.
 func (h *SkillsHandler) saveUpload(c *gin.Context) (path string, size int64, sum string, cleanup func(), err error) {
-	maxMB := h.intSetting(c.Request.Context(), "upload_max_mb", 20)
+	maxMB := h.getInt(c.Request.Context(), "upload_max_mb", 20)
 	limit := int64(maxMB) << 20
 
 	tmp, err := os.CreateTemp("", "runemarket-upload-*")
@@ -459,7 +420,7 @@ func (h *SkillsHandler) publish(c *gin.Context) {
 		Tags:           tags,
 		ArchivePath:    path,
 		Package:        pkg,
-		ReviewRequired: h.setting(ctx, "artifact_review", "none") == "required",
+		ReviewRequired: h.getStr(ctx, "artifact_review", "none") == "required",
 	})
 	switch {
 	case errors.Is(err, hub.ErrVersionExists):
@@ -500,7 +461,7 @@ func parseTags(raw string) []string {
 func (h *SkillsHandler) mine(c *gin.Context) {
 	ctx := c.Request.Context()
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize := h.intSetting(ctx, "page_size", 20)
+	pageSize := h.getInt(ctx, "page_size", 20)
 	items, total, err := h.hub.List(ctx, hub.ListFilter{
 		OwnerID:  auth.CurrentUser(c).ID,
 		Page:     page,

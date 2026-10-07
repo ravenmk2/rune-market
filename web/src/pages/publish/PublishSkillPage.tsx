@@ -97,6 +97,7 @@ export function PublishSkillPage() {
 
       <nav className="tabs">
         <a className="active">发布 Skill</a>
+        <Link to="/publish/design">发布 DESIGN.md</Link>
       </nav>
 
       <div className="layout-detail" style={{ marginTop: 26 }}>

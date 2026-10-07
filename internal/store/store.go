@@ -88,25 +88,29 @@ func IsUniqueViolation(err error) bool {
 
 // Stores bundles the per-entity stores over one connection pool.
 type Stores struct {
-	DB            *sql.DB
-	Dialect       string
-	Users         *UserStore
-	Sessions      *SessionStore
-	Settings      *SettingStore
-	Skills        *SkillStore
-	SkillVersions *SkillVersionStore
-	Tags          *TagStore
+	DB             *sql.DB
+	Dialect        string
+	Users          *UserStore
+	Sessions       *SessionStore
+	Settings       *SettingStore
+	Skills         *SkillStore
+	SkillVersions  *SkillVersionStore
+	Designs        *DesignmdStore
+	DesignVersions *DesignmdVersionStore
+	Tags           *TagStore
 }
 
 func NewStores(db *sql.DB, dialect string) *Stores {
 	return &Stores{
-		DB:            db,
-		Dialect:       dialect,
-		Users:         NewUserStore(db),
-		Sessions:      NewSessionStore(db),
-		Settings:      NewSettingStore(db, dialect),
-		Skills:        NewSkillStore(db),
-		SkillVersions: NewSkillVersionStore(db),
-		Tags:          NewTagStore(db, dialect),
+		DB:             db,
+		Dialect:        dialect,
+		Users:          NewUserStore(db),
+		Sessions:       NewSessionStore(db),
+		Settings:       NewSettingStore(db, dialect),
+		Skills:         NewSkillStore(db),
+		SkillVersions:  NewSkillVersionStore(db),
+		Designs:        NewDesignmdStore(db),
+		DesignVersions: NewDesignmdVersionStore(db),
+		Tags:           NewTagStore(db, dialect),
 	}
 }

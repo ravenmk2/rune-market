@@ -53,20 +53,30 @@ func (s *TagStore) GetOrCreate(ctx context.Context, name string) (string, error)
 
 // SetSkillTags replaces the full tag set of a skill.
 func (s *TagStore) SetSkillTags(ctx context.Context, skillID string, names []string) error {
+	return s.setTags(ctx, "skill_tag", "skill_id", skillID, names)
+}
+
+// SetDesignTags replaces the full tag set of a designmd.
+func (s *TagStore) SetDesignTags(ctx context.Context, designID string, names []string) error {
+	return s.setTags(ctx, "designmd_tag", "designmd_id", designID, names)
+}
+
+// setTags replaces the full tag set in the given link table.
+func (s *TagStore) setTags(ctx context.Context, linkTable, ownerCol, ownerID string, names []string) error {
 	if _, err := s.db.ExecContext(ctx,
-		`DELETE FROM skill_tag WHERE skill_id = ?`, skillID); err != nil {
+		`DELETE FROM `+linkTable+` WHERE `+ownerCol+` = ?`, ownerID); err != nil {
 		return err
 	}
-	insert := `INSERT OR IGNORE INTO skill_tag (skill_id, tag_id) VALUES (?, ?)`
+	insert := `INSERT OR IGNORE INTO ` + linkTable + ` (` + ownerCol + `, tag_id) VALUES (?, ?)`
 	if s.dialect == DialectMySQL {
-		insert = `INSERT IGNORE INTO skill_tag (skill_id, tag_id) VALUES (?, ?)`
+		insert = `INSERT IGNORE INTO ` + linkTable + ` (` + ownerCol + `, tag_id) VALUES (?, ?)`
 	}
 	for _, name := range names {
 		tagID, err := s.GetOrCreate(ctx, name)
 		if err != nil {
 			return err
 		}
-		if _, err := s.db.ExecContext(ctx, insert, skillID, tagID); err != nil {
+		if _, err := s.db.ExecContext(ctx, insert, ownerID, tagID); err != nil {
 			return err
 		}
 	}
@@ -81,30 +91,47 @@ func (s *TagStore) TagsForSkill(ctx context.Context, skillID string) ([]string, 
 	return m[skillID], nil
 }
 
+func (s *TagStore) TagsForDesign(ctx context.Context, designID string) ([]string, error) {
+	m, err := s.TagsByDesignIDs(ctx, []string{designID})
+	if err != nil {
+		return nil, err
+	}
+	return m[designID], nil
+}
+
 // TagsBySkillIDs batch-loads tag names keyed by skill id.
 func (s *TagStore) TagsBySkillIDs(ctx context.Context, skillIDs []string) (map[string][]string, error) {
+	return s.tagsByOwnerIDs(ctx, "skill_tag", "skill_id", skillIDs)
+}
+
+// TagsByDesignIDs batch-loads tag names keyed by designmd id.
+func (s *TagStore) TagsByDesignIDs(ctx context.Context, designIDs []string) (map[string][]string, error) {
+	return s.tagsByOwnerIDs(ctx, "designmd_tag", "designmd_id", designIDs)
+}
+
+func (s *TagStore) tagsByOwnerIDs(ctx context.Context, linkTable, ownerCol string, ownerIDs []string) (map[string][]string, error) {
 	out := map[string][]string{}
-	if len(skillIDs) == 0 {
+	if len(ownerIDs) == 0 {
 		return out, nil
 	}
-	placeholders := strings.Repeat("?,", len(skillIDs))
-	args := make([]any, len(skillIDs))
-	for i, id := range skillIDs {
+	placeholders := strings.Repeat("?,", len(ownerIDs))
+	args := make([]any, len(ownerIDs))
+	for i, id := range ownerIDs {
 		args[i] = id
 	}
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT st.skill_id, t.name FROM skill_tag st JOIN tag t ON t.id = st.tag_id
-		 WHERE st.skill_id IN (`+placeholders[:len(placeholders)-1]+`) ORDER BY t.name`, args...)
+		`SELECT lt.`+ownerCol+`, t.name FROM `+linkTable+` lt JOIN tag t ON t.id = lt.tag_id
+		 WHERE lt.`+ownerCol+` IN (`+placeholders[:len(placeholders)-1]+`) ORDER BY t.name`, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
-		var skillID, name string
-		if err := rows.Scan(&skillID, &name); err != nil {
+		var ownerID, name string
+		if err := rows.Scan(&ownerID, &name); err != nil {
 			return nil, err
 		}
-		out[skillID] = append(out[skillID], name)
+		out[ownerID] = append(out[ownerID], name)
 	}
 	return out, rows.Err()
 }

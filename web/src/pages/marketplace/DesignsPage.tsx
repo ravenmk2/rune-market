@@ -1,20 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { skillsApi } from "../../api/skills";
-import type { SkillListItem } from "../../api/skills";
+import { designsApi } from "../../api/designs";
+import type { DesignListItem } from "../../api/designs";
 import type { ListResult } from "../../api/client";
 import { ApiError } from "../../api/client";
-import { SkillCard } from "../../components/SkillCard";
+import { DesignCard } from "../../components/DesignCard";
 import { Pagination } from "../../components/Pagination";
 
-export function SkillsPage() {
+export function DesignsPage() {
   const [input, setInput] = useState("");
   const [q, setQ] = useState("");
   const [tag, setTag] = useState("");
   const [official, setOfficial] = useState(false);
   const [page, setPage] = useState(1);
-  const [data, setData] = useState<ListResult<SkillListItem> | null>(null);
+  const [data, setData] = useState<ListResult<DesignListItem> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -22,7 +22,7 @@ export function SkillsPage() {
     let cancelled = false;
     setLoading(true);
     setError("");
-    skillsApi
+    designsApi
       .list({ q: q || undefined, tag: tag || undefined, official: official || undefined, page })
       .then((r) => !cancelled && setData(r))
       .catch((e) => !cancelled && setError(e instanceof ApiError ? e.message : "加载失败,请稍后重试"))
@@ -32,10 +32,9 @@ export function SkillsPage() {
     };
   }, [q, tag, official, page]);
 
-  // 标签筛选项来自当前结果集(无独立标签接口)
   const tags = useMemo(() => {
     const set = new Set<string>();
-    data?.items.forEach((s) => s.tags.forEach((t) => set.add(t)));
+    data?.items.forEach((d) => d.tags.forEach((t) => set.add(t)));
     return [...set];
   }, [data]);
 
@@ -61,7 +60,7 @@ export function SkillsPage() {
           <span>⌕</span>
           <input
             type="text"
-            placeholder="搜索技能或设计系统,例如 pdf、frontend、dark theme…"
+            placeholder="搜索设计系统,例如 dark theme、docs、dashboard…"
             value={input}
             onChange={(e) => setInput(e.target.value)}
           />
@@ -69,14 +68,14 @@ export function SkillsPage() {
       </section>
 
       <nav className="tabs">
+        <Link to="/">Skills</Link>
         <a className="active">
-          Skills{data && <span className="count">{data.total}</span>}
+          DESIGN.md{data && <span className="count">{data.total}</span>}
         </a>
-        <Link to="/designs">DESIGN.md</Link>
       </nav>
 
       <div className="filter-row">
-        <span className="label">标签</span>
+        <span className="label">风格</span>
         <button className={`chip${!tag ? " active" : ""}`} onClick={() => pickTag("")}>
           全部
         </button>
@@ -116,12 +115,14 @@ export function SkillsPage() {
           className="panel panel-pad"
           style={{ textAlign: "center", padding: "60px 24px", marginBottom: 28 }}
         >
-          <p className="muted">{q || tag || official ? "没有匹配的制品,换个条件试试。" : "还没有发布的制品。"}</p>
+          <p className="muted">
+            {q || tag || official ? "没有匹配的制品,换个条件试试。" : "还没有发布的制品。"}
+          </p>
         </div>
       ) : (
         <section className="grid">
-          {data?.items.map((s, i) => (
-            <SkillCard key={`${s.namespace}/${s.name}`} skill={s} index={i} />
+          {data?.items.map((d, i) => (
+            <DesignCard key={`${d.namespace}/${d.name}`} design={d} index={i} />
           ))}
         </section>
       )}
