@@ -25,11 +25,15 @@ type Deps struct {
 
 // NewNormalEngine builds the engine for normal mode (config.toml exists).
 // Setup routes are absent, so they 404 per design §5.
-func NewNormalEngine(deps Deps, authSvc *auth.Service) *gin.Engine {
+func NewNormalEngine(deps Deps, authSvc *auth.Service, skillsH *SkillsHandler) *gin.Engine {
 	r := newBaseEngine(deps)
 
 	api := r.Group("/api/v1", auth.CSRFProtect(), authSvc.Resolve())
 	authSvc.RegisterRoutes(api.Group("/auth"))
+	apiAuth := api.Group("", authSvc.RequireAuth())
+	if skillsH != nil {
+		skillsH.RegisterRoutes(api, apiAuth)
+	}
 
 	r.NoRoute(spaHandler(deps.Static, func(c *gin.Context) {
 		if strings.HasPrefix(c.Request.URL.Path, "/api/") {

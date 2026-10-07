@@ -8,11 +8,11 @@ import (
 )
 
 type SettingStore struct {
-	db     *sql.DB
+	db     DBTX
 	keyCol string // `key` is reserved in MySQL and needs backticks there
 }
 
-func NewSettingStore(db *sql.DB, dialect string) *SettingStore {
+func NewSettingStore(db DBTX, dialect string) *SettingStore {
 	keyCol := "key"
 	if dialect == DialectMySQL {
 		keyCol = "`key`"

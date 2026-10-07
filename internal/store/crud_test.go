@@ -21,8 +21,12 @@ func TestMigrateIdempotent(t *testing.T) {
 				`SELECT COUNT(*) FROM schema_migrations`).Scan(&n); err != nil {
 				t.Fatal(err)
 			}
-			if n != 1 {
-				t.Fatalf("expected 1 applied migration, got %d", n)
+			entries, err := migrationsFS.ReadDir("migrations/" + dialect)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if n != len(entries) {
+				t.Fatalf("expected %d applied migrations, got %d", len(entries), n)
 			}
 		})
 	}

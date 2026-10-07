@@ -16,7 +16,9 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/ravenmk2/rune-market/internal/auth"
+	"github.com/ravenmk2/rune-market/internal/blob"
 	"github.com/ravenmk2/rune-market/internal/config"
+	"github.com/ravenmk2/rune-market/internal/hub"
 	"github.com/ravenmk2/rune-market/internal/secret"
 	"github.com/ravenmk2/rune-market/internal/server"
 	"github.com/ravenmk2/rune-market/internal/store"
@@ -123,5 +125,8 @@ func buildNormalEngine(ctx context.Context, deps server.Deps, db *sql.DB, cfg *c
 	}
 	stores := store.NewStores(db, cfg.Database.Driver)
 	authSvc := auth.NewService(stores.Users, stores.Sessions, stores.Settings)
-	return server.NewNormalEngine(deps, authSvc), nil
+	blobs := blob.New(deps.DataDir)
+	skillsSvc := hub.NewSkills(db, cfg.Database.Driver, blobs)
+	skillsH := server.NewSkillsHandler(skillsSvc, stores.Settings, blobs, deps.Logger)
+	return server.NewNormalEngine(deps, authSvc, skillsH), nil
 }

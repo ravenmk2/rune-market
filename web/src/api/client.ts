@@ -30,6 +30,14 @@ export class ApiError extends Error {
 
 export type Query = Record<string, string | number | boolean | undefined | null>;
 
+/** 列表统一信封(§8):{"items": [...], "total", "page", "page_size"} */
+export interface ListResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
 /** 401 回调:由 AuthContext 注册,用于清空会话状态并跳登录页 */
 let unauthorizedHandler: (() => void) | null = null;
 

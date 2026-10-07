@@ -18,10 +18,10 @@ type Session struct {
 }
 
 type SessionStore struct {
-	db *sql.DB
+	db DBTX
 }
 
-func NewSessionStore(db *sql.DB) *SessionStore { return &SessionStore{db: db} }
+func NewSessionStore(db DBTX) *SessionStore { return &SessionStore{db: db} }
 
 func (s *SessionStore) Create(ctx context.Context, sess *Session) error {
 	_, err := s.db.ExecContext(ctx,

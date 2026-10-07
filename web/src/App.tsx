@@ -4,6 +4,10 @@ import { setupApi } from "./api/setup";
 import { AuthProvider } from "./context/AuthContext";
 import { Layout } from "./components/Layout";
 import { SkillsPage } from "./pages/marketplace/SkillsPage";
+import { SkillDetailPage } from "./pages/skill/SkillDetailPage";
+import { PublishSkillPage } from "./pages/publish/PublishSkillPage";
+import { MySkillsPage } from "./pages/mine/MySkillsPage";
+import { EditSkillPage } from "./pages/mine/EditSkillPage";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { RegisterPage } from "./pages/auth/RegisterPage";
 import { SetupWizard } from "./pages/setup/SetupWizard";
@@ -57,6 +61,10 @@ export default function App() {
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<SkillsPage />} />
+            <Route path="/s/:ns/:name/*" element={<SkillDetailPage />} />
+            <Route path="/publish" element={<PublishSkillPage />} />
+            <Route path="/mine/skills" element={<MySkillsPage />} />
+            <Route path="/mine/skills/:id/edit" element={<EditSkillPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />

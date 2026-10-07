@@ -32,10 +32,10 @@ type User struct {
 }
 
 type UserStore struct {
-	db *sql.DB
+	db DBTX
 }
 
-func NewUserStore(db *sql.DB) *UserStore { return &UserStore{db: db} }
+func NewUserStore(db DBTX) *UserStore { return &UserStore{db: db} }
 
 const userColumns = `id, username, nickname, password_hash, role, is_founder, status, has_avatar, bio, created_at, updated_at`
 
