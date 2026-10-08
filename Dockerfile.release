@@ -4,7 +4,8 @@ FROM alpine:3.21
 
 RUN apk add --no-cache ca-certificates
 
-COPY --chmod=755 runemarket /usr/local/bin/runemarket
+ARG TARGETPLATFORM
+COPY --chmod=755 ${TARGETPLATFORM}/runemarket /usr/local/bin/runemarket
 
 WORKDIR /app
 VOLUME /app/data

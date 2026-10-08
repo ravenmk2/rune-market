@@ -45,28 +45,14 @@ changelog:
       - Merge pull request
       - Merge branch
 
-dockers:
-  - id: runemarket-amd64
-    image_templates:
-      - "ghcr.io/ravenmk2/rune-market:{{ .Version }}-amd64"
+dockers_v2:
+  - id: runemarket
     dockerfile: Dockerfile.release
-    use: buildx
-    build_flag_templates:
-      - "--platform=linux/amd64"
-  - id: runemarket-arm64
-    image_templates:
-      - "ghcr.io/ravenmk2/rune-market:{{ .Version }}-arm64"
-    dockerfile: Dockerfile.release
-    use: buildx
-    build_flag_templates:
-      - "--platform=linux/arm64"
-
-docker_manifests:
-  - name_template: "ghcr.io/ravenmk2/rune-market:{{ .Version }}"
-    image_templates:
-      - "ghcr.io/ravenmk2/rune-market:{{ .Version }}-amd64"
-      - "ghcr.io/ravenmk2/rune-market:{{ .Version }}-arm64"
-  - name_template: "ghcr.io/ravenmk2/rune-market:latest"
-    image_templates:
-      - "ghcr.io/ravenmk2/rune-market:{{ .Version }}-amd64"
-      - "ghcr.io/ravenmk2/rune-market:{{ .Version }}-arm64"
+    images:
+      - ghcr.io/ravenmk2/rune-market
+    tags:
+      - "{{ .Version }}"
+      - latest
+    platforms:
+      - linux/amd64
+      - linux/arm64
