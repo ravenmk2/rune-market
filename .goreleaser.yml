@@ -18,7 +18,7 @@ archives:
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]
     files:
       - LICENSE
       - README.md
@@ -27,7 +27,7 @@ checksum:
   name_template: checksums.txt
 
 changelog:
-  use: conventional-commit
+  use: conventional-commits
   groups:
     - title: Features
       regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
