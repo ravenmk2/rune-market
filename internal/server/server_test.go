@@ -124,6 +124,12 @@ func TestSetupModeRedirects(t *testing.T) {
 			t.Fatalf("%s: %d loc=%q", p, w.Code, w.Header().Get("Location"))
 		}
 	}
+	// /api/v1/site answers in setup mode too (SPA boot probe, §5)
+	w = do(t, r, http.MethodGet, "/api/v1/site", "", nil)
+	site := decode(t, w)
+	if w.Code != http.StatusOK || site["mode"] != "setup" || site["step"] != "database" {
+		t.Fatalf("site in setup mode: %d %v", w.Code, site)
+	}
 	// static assets still served (wizard needs its JS)
 	w = do(t, r, http.MethodGet, "/assets/app-1.js", "", nil)
 	if w.Code != http.StatusOK {

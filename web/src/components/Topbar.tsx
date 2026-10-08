@@ -1,7 +1,6 @@
-import { useEffect, useState } from "react";
 import { Link, NavLink } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { siteApi } from "../api/site";
+import { useSite } from "../context/SiteContext";
 import { Avatar } from "./Avatar";
 
 function navClass({ isActive }: { isActive: boolean }) {
@@ -10,16 +9,7 @@ function navClass({ isActive }: { isActive: boolean }) {
 
 export function Topbar() {
   const { user } = useAuth();
-  const [siteName, setSiteName] = useState("RuneMarket");
-
-  useEffect(() => {
-    siteApi
-      .info()
-      .then((info) => {
-        if (info.site_name) setSiteName(info.site_name);
-      })
-      .catch(() => undefined);
-  }, []);
+  const siteName = useSite().site_name || "RuneMarket";
 
   return (
     <header className="topbar">

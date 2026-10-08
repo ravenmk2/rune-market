@@ -58,7 +58,7 @@ rune-market/
 │   ├── auth/                  # 注册/登录/会话/bcrypt/权限中间件
 │   ├── skillpkg/              # skill 包解析:解压缩、frontmatter 校验、harness 检测
 │   ├── designmd/              # DESIGN.md 校验(弱验证)
-│   ├── blob/                  # 内容寻址存储(压缩包/预览图)、图片归一化与缩略图
+│   ├── blob/                  # 内容寻址存储(压缩包/图片,原格式保留)、缩略图派生
 │   └── hub/                   # 业务编排:发布、版本、下架、官方标记、审核
 ├── web/
 │   ├── embed.go               # //go:embed all:dist
@@ -88,9 +88,9 @@ data/
 ├── runemarket.db        # SQLite 数据文件(仅 SQLite 模式)
 ├── blobs/               # skill 压缩包,文件名即 sha256,无扩展名(内容寻址,不可变)
 │   └── <sha256>
-├── images/              # DESIGN.md 预览图,统一 PNG(内容寻址,不可变)
-│   ├── <sha256>.png           # 原图(上传即归一化为 PNG)
-│   └── <sha256>_640.png       # 列表缩略图(宽 640 等比)
+├── images/              # 图片(DESIGN.md 预览图、skill 图标),保留原始格式(内容寻址,不可变)
+│   ├── <sha256>.<ext>         # 原图(png/jpg 原字节,sha256 对原字节计算)
+│   └── <sha256>_640.png       # 列表缩略图(宽 640 等比,统一 PNG)
 └── avatars/             # 用户头像,按用户寻址(可变,覆盖式)
     ├── <user_id>.png          # 当前头像原图
     └── <user_id>_32.png       # 缩略图(32/64/128)
@@ -174,6 +174,7 @@ CREATE TABLE blob (
   sha256     CHAR(64)   PRIMARY KEY,
   kind       VARCHAR(16) NOT NULL,           -- archive | image;决定存储目录(blobs/ 或 images/)
   size       BIGINT      NOT NULL,
+  ext        TEXT        NOT NULL DEFAULT '', -- image 的原始格式扩展名(png/jpg),archive 为空
   ref_count  INTEGER     NOT NULL DEFAULT 1,
   created_at TIMESTAMP   NOT NULL
 );
@@ -186,6 +187,7 @@ CREATE TABLE skill (
   official          BOOLEAN     NOT NULL DEFAULT 0,
   status            VARCHAR(16) NOT NULL DEFAULT 'published', -- pending | published | taken_down
   latest_version_id CHAR(32),
+  icon_sha256       CHAR(64)    REFERENCES blob(sha256), -- 可选图标(image blob),发布/编辑可设
   download_count    BIGINT      NOT NULL DEFAULT 0,
   created_at        TIMESTAMP   NOT NULL,
   updated_at        TIMESTAMP   NOT NULL,
@@ -281,7 +283,7 @@ CREATE TABLE setting (
 
 统一前缀 `/api/v1`;错误格式 `{"error": {"code": "...", "message": "...", "details": [...]}}`;列表统一 `{"items": [...], "total": n, "page": n, "page_size": n}`。
 
-**上传约定:不使用 multipart。文件数据即请求体(raw body)**,元数据走 query string;一次请求一个文件。多文件场景(DESIGN.md 预览图)先经 `POST /blobs` 逐张上传换取 sha256,再在发布请求中引用。
+**上传约定:不使用 multipart。文件数据即请求体(raw body)**,一次请求一个文件;图片经 `POST /images`、skill 压缩包经 `POST /archives` 预上传换取 sha256,发布/编辑请求一律为 **JSON**,以 sha256 引用已上传 blob(服务端不信任客户端,发布时对实包重新校验)。
 
 ### 8.1 安装向导(仅 setup 模式)
 
@@ -310,9 +312,9 @@ CREATE TABLE setting (
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/site` | 站点名称/描述/首页标语/版本号(公开,顶栏品牌与页脚读取) |
-| GET | `/skills?q=&tag=&official=&sort=&page=` | 列表(卡片所需字段) |
-| GET | `/skills/{ns}/{name}` | 详情(latest 版本元数据 + 统计) |
+| GET | `/site` | 站点名称/描述/首页标语/版本号(公开,顶栏品牌与页脚读取);返回 `mode=normal`,**setup 模式下也可达**(返回 `mode=setup` 与 `step`),SPA 启动只探测这一个端点 |
+| GET | `/skills?q=&tag=&official=&sort=&page=` | 列表(卡片所需字段,含 `icon_url`) |
+| GET | `/skills/{ns}/{name}` | 详情(latest 版本元数据 + 统计 + `icon_url`) |
 | GET | `/skills/{ns}/{name}/versions` | 版本列表 |
 | GET | `/skills/{ns}/{name}/versions/{ver}` | 指定版本元数据 |
 | GET | `/skills/{ns}/{name}/versions/{ver}/files` | 包内目录树(从 blob 流式读 zip/tar 生成) |
@@ -321,22 +323,22 @@ CREATE TABLE setting (
 | GET | `/designs?...` | 以上对称:DESIGN.md 列表/详情/版本 |
 | GET | `/designs/{ns}/{name}/versions/{ver}/content` | 渲染用 Markdown 原文(从 DB) |
 | GET | `/designs/{ns}/{name}/versions/{ver}/download` | 下载 DESIGN.md(text/markdown,从 DB 吐) |
-| GET | `/images/{sha256}.png` / `/images/{sha256}_{size}.png` | 预览图与派生尺寸(immutable 缓存) |
+| GET | `/images/{sha256}.{ext}` / `/images/{sha256}_640.png` | 图片原图(png/jpg,按扩展名给 Content-Type)与派生缩略图(immutable 缓存) |
 | GET | `/avatars/{user_id}.png` / `/avatars/{user_id}_{size}.png?v=` | 头像;`v` 取用户 `updated_at`,变更即失效 |
 
 ### 8.4 发布与我的制品(登录)
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/blobs` | 通用二进制上传:**raw body**,返回 `{sha256, size}`;供预览图等多文件场景预上传 |
-| POST | `/skills/validate` | **raw body = 压缩包**,返回校验报告 JSON(不落库),上传页即时报错 |
-| POST | `/skills?version=&tags=&description=` | 正式发布:**raw body = 压缩包**;同名制品存在 → 新版本(命名空间须为本人);`description` 非空时替代包内 description(同时写入 summary 与当前版本描述,≤1024) |
-| POST | `/designs/validate?name=` | **raw body = .md 文本**,返回弱验证报告 |
-| POST | `/designs?name=&summary=&version=&tags=&preview_desktop=&preview_mobile=` | **raw body = .md 文本**;preview_* 为先前 `POST /blobs` 得到的 sha256(可空) |
+| POST | `/images` | 图片上传:**raw body = PNG/JPG**(≤5MB,保留原格式),返回 `{sha256, ext, size, url, thumb_url}`;供预览图与 skill 图标预上传 |
+| POST | `/archives` | skill 压缩包上传:**raw body**(≤`upload_max_mb`),落 blob(内容寻址去重)后 Inspect,返回 `{sha256, size, report, metadata}`;多阶段发布第一步,上传页即时报错 |
+| POST | `/skills` | 正式发布:**JSON** `{archive, version, tags?, description?, icon?}`;`archive` 为 `/archives` 所得 sha256(须存在且 kind=archive,服务端重新 Inspect,报告有 error 拒绝);`icon` 为 `/images` 所得 sha256(可空,须 kind=image);同名制品存在 → 新版本;`description` 非空时替代包内 description(同时写入 summary 与当前版本描述,≤1024) |
+| POST | `/designs/validate` | **JSON** `{name, content}` 干跑,返回弱验证报告(发布页预检) |
+| POST | `/designs` | **JSON** `{content, name, summary?, version, tags?, preview_desktop?, preview_mobile?}`;preview_* 为先前 `POST /images` 得到的 sha256(可空) |
 | GET | `/mine/skills` / `/mine/designs` | 我的制品 |
-| PUT | `/skills/{id}` | 改标签(JSON;skill 还可改 summary 与当前版本 description,designmd 可改 summary) |
+| PUT | `/skills/{id}` | 改标签(JSON;skill 还可改 summary、当前版本 description 与 `icon`——sha256 设置 / `""` 清除 / 缺省不变;designmd 可改 summary) |
 | POST | `/skills/{id}/takedown` `/restore` | 下架/恢复(designmd 对称) |
-| DELETE | `/skills/{id}` / `/designs/{id}` | 删除(级联版本,事务内减 blob 引用) |
+| DELETE | `/skills/{id}` / `/designs/{id}` | 删除(级联版本,事务内减 blob 引用,含图标) |
 
 管理员发布的新制品默认 `official=1`(普通用户为 0);事后仍可经管理面板 official/unofficial 端点调整。
 
@@ -358,9 +360,9 @@ CREATE TABLE setting (
 
 ## 9. Skill 发布与校验管线
 
-上传(raw body,≤`upload_max_mb` 默认 20MB)→ 流式写入临时文件并同时计算 sha256 → 依次执行:
+多阶段发布:`POST /archives` 上传(raw body,≤`upload_max_mb` 默认 20MB)→ 流式写入临时文件并同时计算 sha256 → 落 blob(`kind=archive`,内容寻址去重)→ 对实包依次执行:
 
-1. **解包探测**(内存/临时目录,写入 blobs 前全部可丢弃):按魔数识别 zip / tar / tar.gz;拒绝:路径穿越(`..`、绝对路径)、符号链接、单文件 >50MB、文件总数 >2000、解压后总量 >200MB(zip bomb 防护)
+1. **解包探测**(只读流式,不落盘):按魔数识别 zip / tar / tar.gz;拒绝:路径穿越(`..`、绝对路径)、符号链接、单文件 >50MB、文件总数 >2000、解压后总量 >200MB(zip bomb 防护)
 2. **定位 SKILL.md**:压缩包根直接含 `SKILL.md`,或唯一顶层目录含 `SKILL.md`;两者都不是 → 报错
 3. **frontmatter 解析与硬校验**(yaml.v3;任一失败即拒绝):
    - 仅对规范 6 字段做规则校验:`name`(必填,≤64,`^[a-z0-9](-?[a-z0-9])*$`,无连续连字符)、`description`(必填,≤1024)、`compatibility`(≤500);`license`/`allowed-tools`/`metadata` 存在即可
@@ -370,7 +372,7 @@ CREATE TABLE setting (
 5. **元数据归一化提取**(写入一等列):description、license、compatibility、author(`metadata.author` → 发布者昵称兜底)、version 以表单输入为准(`metadata.version` 仅提示)
 6. **权限解析**:`allowed-tools` 按空格切分为结构化列表(如 `Bash(python3:*)`),标注风险等级(`Bash`/`Write`/`Edit` 为警示,`Read` 类为安全),存 `permissions` JSON,详情页公示
 7. **harness 检测**(见下表)→ `harnesses` JSON;空 = 通用
-8. **落库**(单事务):blob 写入(`kind=archive`,已存在则 `ref_count+1`,临时文件移动为 `./data/blobs/<sha256>`)→ skill upsert(按 `(owner_id, name)`)→ skill_version 插入(版本冲突报错)→ 更新 latest 指针与 summary → tag 关联
+8. **落库**(`POST /skills` JSON 引用 archive sha256,单事务):校验 blob 存在且 `kind=archive` → 从 blob 路径重新 Inspect(报告有 error 拒绝,不信任客户端)→ AddRef 绑定引用 → skill upsert(按 `(owner_id, name)`)→ skill_version 插入(版本冲突报错)→ 更新 latest 指针与 summary → tag 关联 → 可选 icon 绑定(须 `kind=image`,AddRef 并写 `skill.icon_sha256`,已有旧图标则交换引用)
 
 **harness 检测规则**:
 
@@ -385,7 +387,7 @@ CREATE TABLE setting (
 
 ## 10. DESIGN.md 发布与校验管线
 
-1. `.md` 文本经 raw body 上传(≤1MB)+ query 元数据:name(必填,同 name 规则,命名空间下唯一)、summary、version、tags;预览图两张预先 `POST /blobs` 各换取 sha256(各 ≤5MB,PNG/JPG)
+1. 发布与预检均为 **JSON**:`POST /designs` 收 `{content, name, summary?, version, tags?, preview_desktop?, preview_mobile?}`,`POST /designs/validate` 收 `{name, content}` 干跑;content ≤1MB;name(必填,同 name 规则,命名空间下唯一)、version(semver)、summary、tags;预览图两张预先 `POST /images` 各换取 sha256(各 ≤5MB,PNG/JPG,保留原格式)
 2. **弱验证(警告不拦截)**:Markdown 可解析;检测常见章节(Overview/Colors/Typography/Spacing/Components/Elevation/Guidelines),缺失给建议;Colors 章节尝试提取 hex 色值计数(用于校验报告"识别出 N 个颜色定义")
 3. `content` 与 `sha256` 直接写 `designmd_version`;预览图 blob 引用(`kind=image`)+ 生成 `_640` 列表缩略图
 4. 详情页"内容"tab 由前端渲染 Markdown;色板(色值+用途)首版由作者在正文中书写,前端对 hex 做行内色块增强(纯前端,可选增强)
@@ -394,17 +396,18 @@ CREATE TABLE setting (
 
 按生命周期分两类,各用最合适的模型:
 
-| | 不可变内容(压缩包、预览图) | 可变用户状态(头像) |
+| | 不可变内容(压缩包、图片) | 可变用户状态(头像) |
 | --- | --- | --- |
-| 寻址 | 内容寻址:`blobs/<sha256>`、`images/<sha256>.png` | 用户寻址:`avatars/<user_id>.png` |
+| 寻址 | 内容寻址:`blobs/<sha256>`、`images/<sha256>.<ext>`(ext = png/jpg) | 用户寻址:`avatars/<user_id>.png` |
 | 写入 | 已存在仅 `ref_count+1`(秒传) | 覆盖式,同一路径直接替换 |
 | 删除 | `ref_count` 归零删文件及派生缩略图 | 删除用户 / 移除头像时删文件组 |
-| 记账 | 入 `blob` 表(kind/ref_count/size) | 不入表(`user.has_avatar` 标记) |
+| 记账 | 入 `blob` 表(kind/ref_count/size/ext) | 不入表(`user.has_avatar` 标记) |
 | 缓存 | `Cache-Control: public, max-age=31536000, immutable` | 短缓存 + `?v=<updated_at>` 变更即失效 |
 
-- **图片归一化**:上传 PNG/JPG → 魔数与 `image.DecodeConfig` 预检(尺寸 ≤8192×8192,防 decompression bomb)→ 解码 → 重编码 PNG 落盘;扩展名与 Content-Type 恒定
-- **缩略图**:上传时同步生成,`x/image/draw` 高质量缩放;头像中心裁剪正方形后缩 32/64/128;预览图按宽 640 等比;派生文件不入库,随原图增删
+- **图片保留原格式**:上传 PNG/JPG → 魔数与 `image.DecodeConfig` 预检(尺寸 ≤8192×8192,防 decompression bomb)→ 解码(供缩略图)→ **原字节**落盘 `<sha256>.<ext>`,sha256 对原字节计算,ext 记入 `blob` 列;URL 带扩展名,Content-Type 按扩展名,安全性由全局 `X-Content-Type-Options: nosniff` 兜底
+- **缩略图**:上传时同步生成,`x/image/draw` 高质量缩放;头像中心裁剪正方形后缩 32/64/128;预览图/图标按宽 640 等比(`_640.png`,统一 PNG);派生文件不入库,随原图增删
 - **头像尺寸白名单**:32(顶栏/表格)、64(用户主页)、128(账号设置);预览图仅 `_640`
+- **上传引用语义**:`POST /images`/`POST /archives` 上传即持 1 份引用;发布/绑定(预览图、skill 图标、版本)再加 1;删除制品、清除/更换图标释放绑定引用。上传后未绑定的孤儿引用沿用现状不回收
 
 ## 12. 前端工程
 
@@ -475,9 +478,9 @@ web/src/
 1. 表名单数;主键时序 UUIDv7 去横线 32 字符,`CHAR(32)`,应用层生成
 2. skill 与 designmd 实体分离;各自多版本,`(owner_id, name)`、`(*_id, version)` 唯一
 3. 文件存储按生命周期分两种寻址模型:不可变内容(压缩包/预览图)内容寻址并入 `blob` 表记账;可变用户状态(头像)按 `<user_id>` 寻址、覆盖式、不入表,缓存用 `?v=updated_at` 失效
-4. 图片统一归一化为 PNG 固定扩展名;压缩包无扩展名;派生缩略图带 `_<size>` 后缀
+4. ~~图片统一归一化为 PNG~~(已推翻)图片**保留原始格式**(PNG/JPG 原字节落盘,ext 入 blob 列,URL 带扩展名);压缩包无扩展名;派生缩略图带 `_<size>` 后缀(预览图 `_640` 统一 PNG);圆角一律前端 CSS
 5. DESIGN.md 内容存数据库(`designmd_version.content`),不入文件存储
-6. 上传不使用 multipart:单文件接口 raw body + query 元数据;多文件场景先 `POST /blobs` 再引用
+6. 上传不使用 multipart:图片/压缩包分别经 `POST /images`、`POST /archives` raw body 预上传换 sha256,发布/编辑请求为 JSON 引用(多阶段发布;弃用 `POST /blobs`、`POST /skills/validate`);skill 支持自定义图标(`skill.icon_sha256` 引用 image blob)
 7. 公共元数据一等列 + frontmatter 原文 JSON 透传;规范 6 字段硬校验,厂商扩展仅提示
 8. harness 自动检测,命名 `harnesses`,空 = 通用
 9. 注册三模式(open/approval/closed)存 setting;创始用户由安装向导创建,不可删除/禁用/降级

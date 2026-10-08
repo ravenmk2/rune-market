@@ -8,7 +8,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"unicode/utf8"
 
@@ -34,6 +33,7 @@ type SkillItem struct {
 	OwnerNickname string
 	Tags          []string
 	LatestVersion string
+	IconExt       string // stored extension of the icon image ("png"/"jpg"), "" if none
 }
 
 // SkillDetail is the detail read model: item fields plus the latest
@@ -66,20 +66,27 @@ func NewSkills(db *sql.DB, dialect string, blobs *blob.Storage) *Skills {
 	return &Skills{db: db, dialect: dialect, blobs: blobs}
 }
 
-// PublishInput is one publish request (§8.4).
+// DB exposes the connection pool for handlers that need direct access.
+func (s *Skills) DB() *sql.DB { return s.db }
+
+// PublishInput is one publish request (§8.4): the archive was pre-uploaded
+// via POST /archives and is referenced by its blob sha256.
 type PublishInput struct {
 	Owner          *store.User
 	Version        string   // semver, no v prefix, from the form
 	Tags           []string // full replacement tag set
 	Description    string   // optional override for the package meta description
-	ArchivePath    string   // inspected temp file on disk
-	Package        *skillpkg.Package
-	ReviewRequired bool // artifact_review=required
-	Official       bool // admin publishes default to official (§8.4)
+	ArchiveSHA256  string   // archive blob from POST /archives
+	IconSHA256     string   // optional icon image blob from POST /images
+	ReviewRequired bool     // artifact_review=required
+	Official       bool     // admin publishes default to official (§8.4)
 }
 
-// Publish runs §9.8 in a single DB transaction: blob put → skill upsert →
-// version insert → latest pointer → tag association.
+// Publish runs §9.8 in a single DB transaction over a pre-uploaded archive:
+// resolve the archive blob (must exist, kind=archive) → re-inspect it from
+// the blob path (the server trusts the stored bytes, not the client) →
+// AddRef the archive → skill upsert → version insert → latest pointer →
+// tag association → optional icon binding (AddRef image, swap old ref).
 func (s *Skills) Publish(ctx context.Context, in PublishInput) (*store.Skill, *store.SkillVersion, error) {
 	if !semver.IsValid("v" + in.Version) {
 		return nil, nil, fmt.Errorf("%w: version must be semver without v prefix", ErrInvalidInput)
@@ -89,7 +96,31 @@ func (s *Skills) Publish(ctx context.Context, in PublishInput) (*store.Skill, *s
 			return nil, nil, fmt.Errorf("%w: invalid tag %q", ErrInvalidInput, t)
 		}
 	}
-	pkg := in.Package
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	kind, size, err := s.blobs.Stat(ctx, tx, in.ArchiveSHA256)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, nil, fmt.Errorf("%w: archive blob %s not found", ErrInvalidInput, in.ArchiveSHA256)
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	if kind != blob.KindArchive {
+		return nil, nil, fmt.Errorf("%w: blob %s is not an archive", ErrInvalidInput, in.ArchiveSHA256)
+	}
+	archivePath, err := s.blobs.Path(blob.KindArchive, in.ArchiveSHA256, "")
+	if err != nil {
+		return nil, nil, err
+	}
+	pkg, err := skillpkg.Inspect(archivePath, size, in.ArchiveSHA256)
+	if err != nil {
+		return nil, nil, err
+	}
 	meta := pkg.Report.Metadata
 	if meta == nil || pkg.Report.HasErrors() {
 		return nil, nil, fmt.Errorf("%w: package has validation errors", ErrInvalidInput)
@@ -118,21 +149,17 @@ func (s *Skills) Publish(ctx context.Context, in PublishInput) (*store.Skill, *s
 		return nil, nil, err
 	}
 
-	archive, err := os.Open(in.ArchivePath)
-	if err != nil {
+	// binding reference: the upload already holds one (§10.3 semantics)
+	if err := s.blobs.AddRef(ctx, tx, in.ArchiveSHA256, blob.KindArchive); err != nil {
 		return nil, nil, err
 	}
-	defer func() { _ = archive.Close() }()
 
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	sum, size, err := s.blobs.Put(ctx, tx, blob.KindArchive, archive)
-	if err != nil {
-		return nil, nil, err
+	var iconSHA *string
+	if in.IconSHA256 != "" {
+		if err := s.bindIcon(ctx, tx, in.IconSHA256); err != nil {
+			return nil, nil, err
+		}
+		iconSHA = &in.IconSHA256
 	}
 
 	skills := store.NewSkillStore(tx)
@@ -149,8 +176,8 @@ func (s *Skills) Publish(ctx context.Context, in PublishInput) (*store.Skill, *s
 		}
 		sk = &store.Skill{
 			ID: store.NewID(), OwnerID: in.Owner.ID, Name: meta.Name,
-			Official: in.Official,
-			Status:   status, CreatedAt: now, UpdatedAt: now,
+			Official: in.Official, IconSHA256: iconSHA,
+			Status: status, CreatedAt: now, UpdatedAt: now,
 		}
 		if err := skills.Create(ctx, sk); err != nil {
 			return nil, nil, err
@@ -172,7 +199,7 @@ func (s *Skills) Publish(ctx context.Context, in PublishInput) (*store.Skill, *s
 		Harnesses: harnesses, Permissions: permissions,
 		Frontmatter: pkg.Frontmatter,
 		FileCount:   meta.FileCount,
-		SHA256:      sum, Size: size,
+		SHA256:      in.ArchiveSHA256, Size: size,
 		Filename:  fmt.Sprintf("%s-%s.%s", meta.Name, in.Version, pkg.Format),
 		CreatedAt: now,
 	}
@@ -188,13 +215,47 @@ func (s *Skills) Publish(ctx context.Context, in PublishInput) (*store.Skill, *s
 	if err := tags.SetSkillTags(ctx, sk.ID, in.Tags); err != nil {
 		return nil, nil, err
 	}
+	// publishing with an icon over an existing skill swaps the icon reference
+	// (a freshly created row already carries iconSHA)
+	if iconSHA != nil && sk.IconSHA256 == nil {
+		if err := skills.UpdateIcon(ctx, sk.ID, iconSHA, now); err != nil {
+			return nil, nil, err
+		}
+	} else if iconSHA != nil && *sk.IconSHA256 != *iconSHA {
+		old := *sk.IconSHA256
+		if err := skills.UpdateIcon(ctx, sk.ID, iconSHA, now); err != nil {
+			return nil, nil, err
+		}
+		if err := s.blobs.Release(ctx, tx, old); err != nil && !errors.Is(err, store.ErrNotFound) {
+			return nil, nil, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, nil, err
+	}
+	if iconSHA != nil {
+		sk.IconSHA256 = iconSHA
 	}
 	sk.Summary = description
 	sk.LatestVersionID = &v.ID
 	sk.UpdatedAt = now
 	return sk, v, nil
+}
+
+// bindIcon verifies the icon blob is an uploaded image and takes a binding
+// reference on it.
+func (s *Skills) bindIcon(ctx context.Context, q store.DBTX, sha string) error {
+	kind, _, err := s.blobs.Stat(ctx, q, sha)
+	if errors.Is(err, store.ErrNotFound) {
+		return fmt.Errorf("%w: icon blob %s not found", ErrInvalidInput, sha)
+	}
+	if err != nil {
+		return err
+	}
+	if kind != blob.KindImage {
+		return fmt.Errorf("%w: icon blob %s is not an image", ErrInvalidInput, sha)
+	}
+	return s.blobs.AddRef(ctx, q, sha, blob.KindImage)
 }
 
 // GetDetail loads the detail read model by namespace (username) and name.
@@ -210,13 +271,13 @@ func (s *Skills) GetDetailByID(ctx context.Context, id string) (*SkillDetail, er
 func (s *Skills) detailBy(ctx context.Context, cond string, args ...any) (*SkillDetail, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT s.id, s.owner_id, s.name, s.summary, s.official, s.status,
-		        s.latest_version_id, s.download_count, s.created_at, s.updated_at,
+		        s.latest_version_id, s.icon_sha256, s.download_count, s.created_at, s.updated_at,
 		        u.username, u.nickname
 		 FROM skill s JOIN user u ON u.id = s.owner_id
 		 `+cond, args...)
 	d := &SkillDetail{SkillItem: SkillItem{Skill: &store.Skill{}}}
 	err := row.Scan(&d.Skill.ID, &d.Skill.OwnerID, &d.Skill.Name, &d.Skill.Summary,
-		&d.Skill.Official, &d.Skill.Status, &d.Skill.LatestVersionID,
+		&d.Skill.Official, &d.Skill.Status, &d.Skill.LatestVersionID, &d.Skill.IconSHA256,
 		&d.Skill.DownloadCount, &d.Skill.CreatedAt, &d.Skill.UpdatedAt,
 		&d.OwnerUsername, &d.OwnerNickname)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -224,6 +285,13 @@ func (s *Skills) detailBy(ctx context.Context, cond string, args ...any) (*Skill
 	}
 	if err != nil {
 		return nil, err
+	}
+	exts, err := s.iconExts(ctx, []SkillItem{d.SkillItem})
+	if err != nil {
+		return nil, err
+	}
+	if d.Skill.IconSHA256 != nil {
+		d.IconExt = exts[*d.Skill.IconSHA256]
 	}
 
 	tags := store.NewTagStore(s.db, s.dialect)
@@ -291,7 +359,7 @@ func (s *Skills) List(ctx context.Context, f ListFilter) (items []SkillItem, tot
 	}
 	query := `
 		SELECT s.id, s.owner_id, s.name, s.summary, s.official, s.status,
-		       s.latest_version_id, s.download_count, s.created_at, s.updated_at,
+		       s.latest_version_id, s.icon_sha256, s.download_count, s.created_at, s.updated_at,
 		       u.username, u.nickname, COALESCE(lv.version, '')
 		FROM skill s
 		JOIN user u ON u.id = s.owner_id
@@ -312,7 +380,7 @@ func (s *Skills) List(ctx context.Context, f ListFilter) (items []SkillItem, tot
 		it := SkillItem{Skill: &store.Skill{}}
 		if err := rows.Scan(&it.Skill.ID, &it.Skill.OwnerID, &it.Skill.Name,
 			&it.Skill.Summary, &it.Skill.Official, &it.Skill.Status,
-			&it.Skill.LatestVersionID, &it.Skill.DownloadCount,
+			&it.Skill.LatestVersionID, &it.Skill.IconSHA256, &it.Skill.DownloadCount,
 			&it.Skill.CreatedAt, &it.Skill.UpdatedAt,
 			&it.OwnerUsername, &it.OwnerNickname, &it.LatestVersion); err != nil {
 			return nil, 0, err
@@ -328,10 +396,29 @@ func (s *Skills) List(ctx context.Context, f ListFilter) (items []SkillItem, tot
 	if err != nil {
 		return nil, 0, err
 	}
+	exts, err := s.iconExts(ctx, items)
+	if err != nil {
+		return nil, 0, err
+	}
 	for i := range items {
 		items[i].Tags = tagMap[items[i].Skill.ID]
+		if items[i].Skill.IconSHA256 != nil {
+			items[i].IconExt = exts[*items[i].Skill.IconSHA256]
+		}
 	}
 	return items, total, nil
+}
+
+// iconExts batch-resolves the stored extensions of the items' icon images
+// (one query; keyed by sha256).
+func (s *Skills) iconExts(ctx context.Context, items []SkillItem) (map[string]string, error) {
+	var shas []string
+	for _, it := range items {
+		if it.Skill.IconSHA256 != nil {
+			shas = append(shas, *it.Skill.IconSHA256)
+		}
+	}
+	return s.blobs.ImageExts(ctx, s.db, shas)
 }
 
 // ListVersions returns all versions of a skill, highest semver first.
@@ -365,9 +452,11 @@ func (s *Skills) getSkill(ctx context.Context, id string) (*store.Skill, error) 
 	return store.NewSkillStore(s.db).GetByID(ctx, id)
 }
 
-// Update edits summary, current-version description and/or tags
-// (§8.4 PUT /skills/{id}). Nil pointer/slice leaves the field unchanged.
-func (s *Skills) Update(ctx context.Context, actor *store.User, skillID string, summary, description *string, tags []string) error {
+// Update edits summary, current-version description, tags and/or icon
+// (§8.4 PUT /skills/{id}). Nil pointer/slice leaves the field unchanged;
+// icon "" clears the icon (releasing its blob ref), otherwise it must be an
+// uploaded image blob sha256.
+func (s *Skills) Update(ctx context.Context, actor *store.User, skillID string, summary, description *string, tags []string, icon *string) error {
 	sk, err := s.getSkill(ctx, skillID)
 	if err != nil {
 		return err
@@ -400,9 +489,53 @@ func (s *Skills) Update(ctx context.Context, actor *store.User, skillID string, 
 				return fmt.Errorf("%w: invalid tag %q", ErrInvalidInput, t)
 			}
 		}
-		return store.NewTagStore(s.db, s.dialect).SetSkillTags(ctx, skillID, tags)
+		if err := store.NewTagStore(s.db, s.dialect).SetSkillTags(ctx, skillID, tags); err != nil {
+			return err
+		}
+	}
+	if icon != nil {
+		return s.updateIcon(ctx, sk, icon)
 	}
 	return nil
+}
+
+// updateIcon swaps or clears the skill icon with ref accounting in one
+// transaction: AddRef the new image before releasing the old one.
+func (s *Skills) updateIcon(ctx context.Context, sk *store.Skill, icon *string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	now := store.Now()
+	if *icon == "" {
+		if sk.IconSHA256 == nil {
+			return nil
+		}
+		if err := store.NewSkillStore(tx).UpdateIcon(ctx, sk.ID, nil, now); err != nil {
+			return err
+		}
+		if err := s.blobs.Release(ctx, tx, *sk.IconSHA256); err != nil && !errors.Is(err, store.ErrNotFound) {
+			return err
+		}
+		return tx.Commit()
+	}
+	if sk.IconSHA256 != nil && *sk.IconSHA256 == *icon {
+		return nil // unchanged
+	}
+	if err := s.bindIcon(ctx, tx, *icon); err != nil {
+		return err
+	}
+	if err := store.NewSkillStore(tx).UpdateIcon(ctx, sk.ID, icon, now); err != nil {
+		return err
+	}
+	if sk.IconSHA256 != nil {
+		if err := s.blobs.Release(ctx, tx, *sk.IconSHA256); err != nil && !errors.Is(err, store.ErrNotFound) {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // SetStatus handles takedown/restore (§8.4).
@@ -463,6 +596,11 @@ func (s *Skills) Delete(ctx context.Context, actor *store.User, skillID string) 
 	}
 	for _, v := range versions {
 		if err := s.blobs.Release(ctx, tx, v.SHA256); err != nil && !errors.Is(err, store.ErrNotFound) {
+			return err
+		}
+	}
+	if sk.IconSHA256 != nil {
+		if err := s.blobs.Release(ctx, tx, *sk.IconSHA256); err != nil && !errors.Is(err, store.ErrNotFound) {
 			return err
 		}
 	}

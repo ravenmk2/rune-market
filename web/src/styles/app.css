@@ -272,7 +272,10 @@ h1, h2, h3 { font-weight: 600; }
   font-size: 19px;
   background: var(--sand);
   color: var(--ink);
+  overflow: hidden;
 }
+
+.card-icon img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 .card-icon.tint-a { background: var(--accent-soft); color: var(--accent); }
 .card-icon.tint-b { background: #E5EBF3; color: #3D5A80; }
@@ -446,6 +449,9 @@ h1, h2, h3 { font-weight: 600; }
 }
 
 .detail-icon img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* 表单内图标设置行(发布 / 编辑页):预览 + 操作按钮 */
+.icon-field { display: flex; align-items: center; gap: 16px; }
 
 .detail-head h1 {
   font-family: var(--mono);

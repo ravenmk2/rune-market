@@ -1,9 +1,9 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -20,7 +20,7 @@ import (
 	"github.com/ravenmk2/rune-market/internal/store"
 )
 
-// DesignsHandler serves the §8.3/§8.4 design endpoints, POST /blobs and
+// DesignsHandler serves the §8.3/§8.4 design endpoints, POST /images and
 // the /images file routes (§8.3, §11).
 type DesignsHandler struct {
 	apiSettings
@@ -45,7 +45,7 @@ func (h *DesignsHandler) RegisterRoutes(r *gin.Engine, api, apiAuth *gin.RouterG
 	api.GET("/designs/:ns/:name/versions/:ver/content", h.content)
 	api.GET("/designs/:ns/:name/versions/:ver/download", h.download)
 
-	apiAuth.POST("/blobs", h.uploadBlob)
+	apiAuth.POST("/images", h.uploadImage)
 	apiAuth.POST("/designs/validate", h.validate)
 	apiAuth.POST("/designs", h.publish)
 	apiAuth.GET("/mine/designs", h.mine)
@@ -57,12 +57,38 @@ func (h *DesignsHandler) RegisterRoutes(r *gin.Engine, api, apiAuth *gin.RouterG
 
 // --- response shaping (contract shapes) ---
 
-// previewURL maps a blob sha to its /images path (nil when absent).
-func previewURL(sha *string, suffix string) any {
+// previewURL maps a blob sha to its /images path (nil when absent). The
+// _640 thumbnail is always PNG; originals carry their stored extension,
+// resolved via exts (sha256 → ext).
+func previewURL(sha *string, suffix string, exts map[string]string) any {
 	if sha == nil || *sha == "" {
 		return nil
 	}
-	return "/images/" + *sha + suffix + ".png"
+	if suffix != "" {
+		return "/images/" + *sha + suffix + ".png"
+	}
+	ext := exts[*sha]
+	if ext == "" {
+		return nil
+	}
+	return "/images/" + *sha + "." + ext
+}
+
+// previewExtMap batch-resolves the stored extensions of the given versions'
+// preview images (one query, §8.3 URL building).
+func previewExtMap(ctx context.Context, blobs *blob.Storage, db store.DBTX, versions ...*store.DesignmdVersion) (map[string]string, error) {
+	var shas []string
+	for _, v := range versions {
+		if v == nil {
+			continue
+		}
+		for _, sha := range []*string{v.PreviewDesktopSHA256, v.PreviewMobileSHA256} {
+			if sha != nil && *sha != "" {
+				shas = append(shas, *sha)
+			}
+		}
+	}
+	return blobs.ImageExts(ctx, db, shas)
 }
 
 func designItemJSON(it hub.DesignItem) gin.H {
@@ -81,7 +107,7 @@ func designItemJSON(it hub.DesignItem) gin.H {
 		"latest_version":    it.LatestVersion,
 		"download_count":    it.Design.DownloadCount,
 		"updated_at":        it.Design.UpdatedAt,
-		"preview_thumb_url": previewURL(it.PreviewDesktopSHA256, "_640"),
+		"preview_thumb_url": previewURL(it.PreviewDesktopSHA256, "_640", nil),
 		"owner": gin.H{
 			"username": it.OwnerUsername,
 			"nickname": it.OwnerNickname,
@@ -89,20 +115,20 @@ func designItemJSON(it hub.DesignItem) gin.H {
 	}
 }
 
-func designVersionJSON(v *store.DesignmdVersion) gin.H {
+func designVersionJSON(v *store.DesignmdVersion, exts map[string]string) gin.H {
 	return gin.H{
 		"version":             v.Version,
 		"sha256":              v.SHA256,
-		"preview_desktop_url": previewURL(v.PreviewDesktopSHA256, ""),
-		"preview_mobile_url":  previewURL(v.PreviewMobileSHA256, ""),
+		"preview_desktop_url": previewURL(v.PreviewDesktopSHA256, "", exts),
+		"preview_mobile_url":  previewURL(v.PreviewMobileSHA256, "", exts),
 		"created_at":          v.CreatedAt,
 	}
 }
 
-func designDetailJSON(d *hub.DesignDetail) gin.H {
+func designDetailJSON(d *hub.DesignDetail, exts map[string]string) gin.H {
 	out := designItemJSON(d.DesignItem)
 	if d.Latest != nil {
-		out["latest"] = designVersionJSON(d.Latest)
+		out["latest"] = designVersionJSON(d.Latest, exts)
 	}
 	return out
 }
@@ -170,7 +196,21 @@ func (h *DesignsHandler) detail(c *gin.Context) {
 	if d == nil {
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"design": designDetailJSON(d)})
+	out, err := h.detailJSON(c.Request.Context(), d)
+	if err != nil {
+		auth.Error(c, http.StatusInternalServerError, "internal", "failed to load design")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"design": out})
+}
+
+// detailJSON renders a detail with resolved preview image extensions.
+func (h *DesignsHandler) detailJSON(ctx context.Context, d *hub.DesignDetail) (gin.H, error) {
+	exts, err := previewExtMap(ctx, h.blobs, h.hub.DB(), d.Latest)
+	if err != nil {
+		return nil, err
+	}
+	return designDetailJSON(d, exts), nil
 }
 
 func (h *DesignsHandler) versions(c *gin.Context) {
@@ -186,9 +226,14 @@ func (h *DesignsHandler) versions(c *gin.Context) {
 		auth.Error(c, http.StatusInternalServerError, "internal", "failed to list versions")
 		return
 	}
+	exts, err := previewExtMap(c.Request.Context(), h.blobs, h.hub.DB(), versions...)
+	if err != nil {
+		auth.Error(c, http.StatusInternalServerError, "internal", "failed to list versions")
+		return
+	}
 	out := make([]gin.H, 0, len(versions))
 	for _, v := range versions {
-		out = append(out, designVersionJSON(v))
+		out = append(out, designVersionJSON(v, exts))
 	}
 	c.JSON(http.StatusOK, gin.H{"items": out})
 }
@@ -219,7 +264,12 @@ func (h *DesignsHandler) version(c *gin.Context) {
 	if v == nil {
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"version": designVersionJSON(v)})
+	exts, err := previewExtMap(c.Request.Context(), h.blobs, h.hub.DB(), v)
+	if err != nil {
+		auth.Error(c, http.StatusInternalServerError, "internal", "failed to load version")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"version": designVersionJSON(v, exts)})
 }
 
 func (h *DesignsHandler) content(c *gin.Context) {
@@ -256,7 +306,7 @@ func (h *DesignsHandler) download(c *gin.Context) {
 
 // --- images (§8.3, §11: immutable cache) ---
 
-var imageNameRe = regexp.MustCompile(`^[0-9a-f]{64}(_640)?\.png$`)
+var imageNameRe = regexp.MustCompile(`^[0-9a-f]{64}(_640)?\.(png|jpg)$`)
 
 func (h *DesignsHandler) serveImage(c *gin.Context) {
 	name := c.Param("name")
@@ -279,7 +329,7 @@ func (h *DesignsHandler) serveImage(c *gin.Context) {
 }
 
 func (h *DesignsHandler) blobsDir() (string, error) {
-	p, err := h.blobs.Path(blob.KindImage, "x")
+	p, err := h.blobs.Path(blob.KindImage, "x", "png")
 	if err != nil {
 		return "", err
 	}
@@ -288,56 +338,86 @@ func (h *DesignsHandler) blobsDir() (string, error) {
 
 // --- upload endpoints ---
 
-// uploadBlob handles POST /blobs: raw body = PNG/JPG image, normalized to
-// PNG with content addressing (§8.4, §11).
-func (h *DesignsHandler) uploadBlob(c *gin.Context) {
-	sum, size, err := h.blobs.PutImage(c.Request.Context(), h.hubDB(), c.Request.Body)
+// uploadImage handles POST /images: raw body = PNG/JPG image, stored in its
+// original format with content addressing (§8.4, §11). Used for DESIGN.md
+// previews and skill icons.
+func (h *DesignsHandler) uploadImage(c *gin.Context) {
+	sum, ext, size, err := h.blobs.PutImage(c.Request.Context(), h.hubDB(), c.Request.Body)
 	if err != nil {
 		auth.Error(c, http.StatusBadRequest, "invalid_image", err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"sha256": sum, "size": size})
+	c.JSON(http.StatusOK, gin.H{
+		"sha256": sum, "ext": ext, "size": size,
+		"url":       "/images/" + sum + "." + ext,
+		"thumb_url": "/images/" + sum + "_640.png",
+	})
 }
 
-// readMarkdownBody reads the raw .md body with the 1MB cap (§10.1).
-func (h *DesignsHandler) readMarkdownBody(c *gin.Context) ([]byte, bool) {
-	body, err := io.ReadAll(io.LimitReader(c.Request.Body, designmd.MaxContentBytes+1))
-	if err != nil {
-		auth.Error(c, http.StatusBadRequest, "invalid_upload", "failed to read body")
-		return nil, false
-	}
-	if int64(len(body)) > designmd.MaxContentBytes {
-		auth.Error(c, http.StatusRequestEntityTooLarge, "invalid_upload", "content exceeds 1MB limit")
-		return nil, false
-	}
-	return body, true
+type validateDesignRequest struct {
+	Name    string `json:"name"`
+	Content string `json:"content"`
 }
 
+// validate handles POST /designs/validate (§8.4): JSON dry run returning the
+// weak-validation report for the publish page precheck.
 func (h *DesignsHandler) validate(c *gin.Context) {
-	body, ok := h.readMarkdownBody(c)
-	if !ok {
+	var req validateDesignRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		auth.Error(c, http.StatusBadRequest, "invalid_json", "request body must be valid JSON")
 		return
 	}
-	c.JSON(http.StatusOK, designmd.Validate(body))
+	if !validateContentLength(c, req.Content) {
+		return
+	}
+	c.JSON(http.StatusOK, designmd.Validate([]byte(req.Content)))
 }
 
+// validateContentLength enforces the 1MB content cap (§10.1).
+func validateContentLength(c *gin.Context, content string) bool {
+	if len(content) > designmd.MaxContentBytes {
+		auth.Error(c, http.StatusRequestEntityTooLarge, "invalid_upload", "content exceeds 1MB limit")
+		return false
+	}
+	return true
+}
+
+type publishDesignRequest struct {
+	Content        string   `json:"content"`
+	Name           string   `json:"name"`
+	Summary        string   `json:"summary"`
+	Version        string   `json:"version"`
+	Tags           []string `json:"tags"`
+	PreviewDesktop string   `json:"preview_desktop"`
+	PreviewMobile  string   `json:"preview_mobile"`
+}
+
+// publish handles POST /designs (§8.4): JSON body; preview_* reference image
+// blobs from POST /images.
 func (h *DesignsHandler) publish(c *gin.Context) {
-	q := c.Request.URL.Query()
-	name := q.Get("name")
-	if name == "" {
-		auth.Error(c, http.StatusBadRequest, "invalid_argument", "name query param is required")
+	var req publishDesignRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		auth.Error(c, http.StatusBadRequest, "invalid_json", "request body must be valid JSON")
 		return
 	}
-	version := q.Get("version")
-	if version == "" {
-		auth.Error(c, http.StatusBadRequest, "invalid_argument", "version query param is required")
+	if req.Name == "" {
+		auth.Error(c, http.StatusBadRequest, "invalid_argument", "name is required")
 		return
 	}
-	body, ok := h.readMarkdownBody(c)
-	if !ok {
+	if req.Version == "" {
+		auth.Error(c, http.StatusBadRequest, "invalid_argument", "version is required")
 		return
 	}
-	if report := designmd.Validate(body); report.HasErrors() {
+	for _, sha := range []string{req.PreviewDesktop, req.PreviewMobile} {
+		if sha != "" && !sha256Re.MatchString(sha) {
+			auth.Error(c, http.StatusBadRequest, "invalid_argument", "preview must be an image blob sha256 from POST /images")
+			return
+		}
+	}
+	if !validateContentLength(c, req.Content) {
+		return
+	}
+	if report := designmd.Validate([]byte(req.Content)); report.HasErrors() {
 		var details []string
 		for _, chk := range report.Checks {
 			if chk.Level == designmd.LevelError {
@@ -352,13 +432,13 @@ func (h *DesignsHandler) publish(c *gin.Context) {
 	user := auth.CurrentUser(c)
 	d, _, err := h.hub.Publish(ctx, hub.DesignPublishInput{
 		Owner:          user,
-		Name:           name,
-		Summary:        q.Get("summary"),
-		Version:        version,
-		Tags:           parseTags(q.Get("tags")),
-		Content:        body,
-		PreviewDesktop: q.Get("preview_desktop"),
-		PreviewMobile:  q.Get("preview_mobile"),
+		Name:           req.Name,
+		Summary:        req.Summary,
+		Version:        req.Version,
+		Tags:           req.Tags,
+		Content:        []byte(req.Content),
+		PreviewDesktop: req.PreviewDesktop,
+		PreviewMobile:  req.PreviewMobile,
 		ReviewRequired: h.getStr(ctx, "artifact_review", "none") == "required",
 		Official:       user.Role == store.RoleAdmin,
 	})
@@ -380,7 +460,12 @@ func (h *DesignsHandler) publish(c *gin.Context) {
 		auth.Error(c, http.StatusInternalServerError, "internal", "failed to load design")
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"design": designDetailJSON(det)})
+	out, err := h.detailJSON(ctx, det)
+	if err != nil {
+		auth.Error(c, http.StatusInternalServerError, "internal", "failed to load design")
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"design": out})
 }
 
 // --- owner endpoints ---
@@ -471,7 +556,12 @@ func (h *DesignsHandler) writeManageResult(c *gin.Context, err error) {
 		auth.Error(c, http.StatusInternalServerError, "internal", "failed to load design")
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"design": designDetailJSON(d)})
+	out, err := h.detailJSON(c.Request.Context(), d)
+	if err != nil {
+		auth.Error(c, http.StatusInternalServerError, "internal", "failed to load design")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"design": out})
 }
 
 // hubDB exposes the hub's DB pool for transaction-free blob writes.

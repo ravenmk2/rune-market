@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
-import { setupApi } from "./api/setup";
+import { siteApi } from "./api/site";
+import type { SiteInfo } from "./api/site";
 import { AuthProvider } from "./context/AuthContext";
+import { SiteProvider } from "./context/SiteContext";
 import { Layout } from "./components/Layout";
 import { SkillsPage } from "./pages/marketplace/SkillsPage";
 import { DesignsPage } from "./pages/marketplace/DesignsPage";
@@ -30,23 +32,24 @@ type BootMode = "loading" | "setup" | "normal";
 
 export default function App() {
   const [mode, setMode] = useState<BootMode>("loading");
-  const [setupStep, setSetupStep] = useState(1);
+  const [site, setSite] = useState<SiteInfo>({ mode: "normal" });
 
   useEffect(() => {
     let cancelled = false;
-    setupApi
-      .status()
-      .then((status) => {
+    // /site 在两种模式下都应答(§5):安装模式返回 mode/step,正常模式返回站点信息
+    siteApi
+      .info()
+      .then((info) => {
         if (cancelled) return;
-        if (status.mode === "setup") {
-          setSetupStep(status.step === "admin" ? 2 : 1);
+        if (info.mode === "setup") {
           setMode("setup");
         } else {
+          setSite(info);
           setMode("normal");
         }
       })
       .catch(() => {
-        // 安装完成后 /setup/* 返回 404(§5);网络错误时也按正常模式渲染,由各页面自行报错
+        // 网络错误时按正常模式渲染,由各页面自行报错
         if (!cancelled) setMode("normal");
       });
     return () => {
@@ -68,11 +71,12 @@ export default function App() {
     <AuthProvider enabled={mode === "normal"}>
       {mode === "setup" ? (
         <Routes>
-          <Route path="/setup" element={<SetupWizard initialStep={setupStep} />} />
+          <Route path="/setup" element={<SetupWizard initialStep={site.step === "admin" ? 2 : 1} />} />
           <Route path="*" element={<Navigate to="/setup" replace />} />
         </Routes>
       ) : (
-        <Routes>
+        <SiteProvider info={site}>
+          <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<SkillsPage />} />
             <Route path="/designs" element={<DesignsPage />} />
@@ -99,7 +103,8 @@ export default function App() {
             <Route path="settings" element={<SettingsPage />} />
           </Route>
           <Route path="/setup" element={<Navigate to="/" replace />} />
-        </Routes>
+          </Routes>
+        </SiteProvider>
       )}
     </AuthProvider>
   );

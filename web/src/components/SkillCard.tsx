@@ -16,9 +16,15 @@ export function SkillCard({ skill, index = 0 }: { skill: SkillListItem; index?: 
   return (
     <Link className="card" to={`/s/${skill.namespace}/${skill.name}`}>
       <div className="card-top">
-        <div className={`card-icon ${TINTS[index % TINTS.length]}`}>
-          {skill.name.charAt(0).toUpperCase()}
-        </div>
+        {skill.icon_url ? (
+          <div className="card-icon">
+            <img src={skill.icon_url} alt="" loading="lazy" />
+          </div>
+        ) : (
+          <div className={`card-icon ${TINTS[index % TINTS.length]}`}>
+            {skill.name.charAt(0).toUpperCase()}
+          </div>
+        )}
         <div>
           <div className="card-title">
             {skill.name} {skill.official && <OfficialBadge />}

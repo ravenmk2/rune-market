@@ -3,7 +3,7 @@ import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { designsApi } from "../../api/designs";
 import type { DesignListItem } from "../../api/designs";
-import { siteApi } from "../../api/site";
+import { useSite } from "../../context/SiteContext";
 import type { ListResult } from "../../api/client";
 import { ApiError } from "../../api/client";
 import { DesignCard } from "../../components/DesignCard";
@@ -18,18 +18,7 @@ export function DesignsPage() {
   const [data, setData] = useState<ListResult<DesignListItem> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [tagline, setTagline] = useState("");
-
-  useEffect(() => {
-    let cancelled = false;
-    siteApi
-      .info()
-      .then((s) => !cancelled && setTagline(s.site_tagline ?? ""))
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const tagline = useSite().site_tagline || "";
 
   useEffect(() => {
     let cancelled = false;
@@ -134,8 +123,8 @@ export function DesignsPage() {
         </div>
       ) : (
         <section className="grid">
-          {data?.items.map((d, i) => (
-            <DesignCard key={`${d.namespace}/${d.name}`} design={d} index={i} />
+          {data?.items.map((d) => (
+            <DesignCard key={`${d.namespace}/${d.name}`} design={d} />
           ))}
         </section>
       )}

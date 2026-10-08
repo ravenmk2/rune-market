@@ -3,9 +3,7 @@ import type { DesignListItem } from "../api/designs";
 import { OfficialBadge } from "./Badge";
 import { formatCount } from "../utils/format";
 
-const TINTS = ["tint-a", "tint-b", "tint-c", "tint-d"];
-
-export function DesignCard({ design, index = 0 }: { design: DesignListItem; index?: number }) {
+export function DesignCard({ design }: { design: DesignListItem }) {
   const navigate = useNavigate();
   return (
     <Link className="card" to={`/d/${design.namespace}/${design.name}`}>
@@ -17,9 +15,6 @@ export function DesignCard({ design, index = 0 }: { design: DesignListItem; inde
         )}
       </div>
       <div className="card-top">
-        <div className={`card-icon ${TINTS[index % TINTS.length]}`}>
-          {design.name.charAt(0).toUpperCase()}
-        </div>
         <div>
           <div className="card-title">
             {design.name} {design.official && <OfficialBadge />}

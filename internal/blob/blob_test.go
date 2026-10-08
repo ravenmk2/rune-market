@@ -43,7 +43,7 @@ func TestPutDedupRelease(t *testing.T) {
 	if sum != hex.EncodeToString(expectSum[:]) || size != int64(len(content)) {
 		t.Fatalf("sum=%q size=%d", sum, size)
 	}
-	p, _ := storage.Path(KindArchive, sum)
+	p, _ := storage.Path(KindArchive, sum, "")
 	if _, err := os.Stat(p); err != nil {
 		t.Fatalf("file missing: %v", err)
 	}

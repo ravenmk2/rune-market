@@ -2,8 +2,11 @@ package hub
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
 	"errors"
+	"image"
+	"image/png"
 	"io"
 	"os"
 	"path/filepath"
@@ -12,7 +15,6 @@ import (
 
 	"github.com/ravenmk2/rune-market/internal/blob"
 	"github.com/ravenmk2/rune-market/internal/config"
-	"github.com/ravenmk2/rune-market/internal/skillpkg"
 	"github.com/ravenmk2/rune-market/internal/store"
 )
 
@@ -59,8 +61,8 @@ func newTestEnv(t *testing.T) *testEnv {
 	}
 }
 
-// buildPackage creates a real zip and inspects it.
-func buildPackage(t *testing.T, name, description string) (string, *skillpkg.Package) {
+// buildPackage creates a real zip on disk and returns its path.
+func buildPackage(t *testing.T, name, description string) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "skill.zip")
 	f, err := os.Create(p)
@@ -86,23 +88,62 @@ func buildPackage(t *testing.T, name, description string) (string, *skillpkg.Pac
 	if err := zw.Close(); err != nil {
 		t.Fatal(err)
 	}
-	st, _ := os.Stat(p)
-	pkg, err := skillpkg.Inspect(p, st.Size(), "")
+	return p
+}
+
+// archiveSHA uploads a built package as an archive blob (the POST /archives
+// step of the staged publish flow) and returns its sha256.
+func (e *testEnv) archiveSHA(t *testing.T, name, description string) string {
+	t.Helper()
+	f, err := os.Open(buildPackage(t, name, description))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pkg.Report.HasErrors() {
-		t.Fatalf("test package has errors: %+v", pkg.Report.Checks)
+	defer func() { _ = f.Close() }()
+	sum, _, err := e.blobs.Put(context.Background(), e.db.DB, blob.KindArchive, f)
+	if err != nil {
+		t.Fatal(err)
 	}
-	return p, pkg
+	return sum
+}
+
+// iconSHA uploads an icon image blob (the POST /images step); each call
+// varies the pixel content so icons never dedup to the same sha.
+func (e *testEnv) iconSHA(t *testing.T) string {
+	t.Helper()
+	iconSeq++
+	img := image.NewRGBA(image.Rect(0, 0, 256, 256))
+	for i := range img.Pix {
+		img.Pix[i] = uint8(iconSeq + i)
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	sum, _, _, err := e.blobs.PutImage(context.Background(), e.db.DB, bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return sum
+}
+
+var iconSeq int
+
+func (e *testEnv) blobRefs(t *testing.T, sha string) int {
+	t.Helper()
+	var refs int
+	if err := e.db.DB.QueryRowContext(context.Background(),
+		"SELECT ref_count FROM `blob` WHERE sha256 = ?", sha).Scan(&refs); err != nil {
+		t.Fatal(err)
+	}
+	return refs
 }
 
 func (e *testEnv) publish(t *testing.T, name, description, version string, tags []string) (*store.Skill, *store.SkillVersion) {
 	t.Helper()
-	path, pkg := buildPackage(t, name, description)
 	sk, v, err := e.skills.Publish(context.Background(), PublishInput{
 		Owner: e.owner, Version: version, Tags: tags,
-		ArchivePath: path, Package: pkg,
+		ArchiveSHA256: e.archiveSHA(t, name, description),
 	})
 	if err != nil {
 		t.Fatalf("publish %s@%s: %v", name, version, err)
@@ -140,8 +181,7 @@ func TestPublishAndVersions(t *testing.T) {
 
 	// version conflict
 	_, _, err = env.skills.Publish(ctx, PublishInput{
-		Owner: env.owner, Version: "1.1.0", ArchivePath: mustPkg(t, "pdf"),
-		Package: mustInspect(t, "pdf"),
+		Owner: env.owner, Version: "1.1.0", ArchiveSHA256: env.archiveSHA(t, "pdf", "d"),
 	})
 	if !errors.Is(err, ErrVersionExists) {
 		t.Fatalf("expected version conflict, got %v", err)
@@ -169,23 +209,199 @@ func TestPublishAndVersions(t *testing.T) {
 	}
 }
 
-func mustPkg(t *testing.T, name string) string {
-	t.Helper()
-	p, _ := buildPackage(t, name, "d")
-	return p
+// TestPublishStagedRejects covers the staged publish guards: the archive
+// reference must point at an existing archive blob.
+func TestPublishStagedRejects(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+
+	// unknown sha
+	_, _, err := env.skills.Publish(ctx, PublishInput{
+		Owner: env.owner, Version: "1.0.0",
+		ArchiveSHA256: "0000000000000000000000000000000000000000000000000000000000000000",
+	})
+	if !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("unknown archive: %v", err)
+	}
+
+	// an image blob is not an archive
+	imgSHA := env.iconSHA(t)
+	_, _, err = env.skills.Publish(ctx, PublishInput{
+		Owner: env.owner, Version: "1.0.0", ArchiveSHA256: imgSHA,
+	})
+	if !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("image as archive: %v", err)
+	}
+
+	// icon must be an existing image blob
+	_, _, err = env.skills.Publish(ctx, PublishInput{
+		Owner: env.owner, Version: "1.0.0",
+		ArchiveSHA256: env.archiveSHA(t, "bad-icon", "d"),
+		IconSHA256:    "1111111111111111111111111111111111111111111111111111111111111111",
+	})
+	if !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("unknown icon: %v", err)
+	}
+	archiveSHA := env.archiveSHA(t, "bad-icon2", "d")
+	_, _, err = env.skills.Publish(ctx, PublishInput{
+		Owner: env.owner, Version: "1.0.0", ArchiveSHA256: archiveSHA, IconSHA256: archiveSHA,
+	})
+	if !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("archive as icon: %v", err)
+	}
+	// failed publishes must not leave the archive binding ref behind
+	if got := env.blobRefs(t, archiveSHA); got != 1 {
+		t.Fatalf("archive refs after failed publish: %d want 1 (upload only)", got)
+	}
 }
 
-func mustInspect(t *testing.T, name string) *skillpkg.Package {
-	t.Helper()
-	_, pkg := buildPackage(t, name, "d")
-	return pkg
+func TestPublishIcon(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+	icon := env.iconSHA(t)
+
+	// publish with icon: skill row references it, icon gains a binding ref
+	sk, _, err := env.skills.Publish(ctx, PublishInput{
+		Owner: env.owner, Version: "1.0.0",
+		ArchiveSHA256: env.archiveSHA(t, "iconed", "d"), IconSHA256: icon,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sk.IconSHA256 == nil || *sk.IconSHA256 != icon {
+		t.Fatalf("icon: %+v", sk.IconSHA256)
+	}
+	if got := env.blobRefs(t, icon); got != 2 {
+		t.Fatalf("icon refs: %d want 2 (upload+bind)", got)
+	}
+	// detail carries the resolved extension for URL building
+	d, err := env.skills.GetDetail(ctx, "raven", "iconed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.IconExt != "png" {
+		t.Fatalf("icon ext: %q", d.IconExt)
+	}
+
+	// republishing a new version with a different icon swaps the reference
+	icon2 := env.iconSHA(t)
+	_, _, err = env.skills.Publish(ctx, PublishInput{
+		Owner: env.owner, Version: "1.1.0",
+		ArchiveSHA256: env.archiveSHA(t, "iconed", "d2"), IconSHA256: icon2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := env.blobRefs(t, icon); got != 1 {
+		t.Fatalf("old icon refs after swap: %d want 1", got)
+	}
+	if got := env.blobRefs(t, icon2); got != 2 {
+		t.Fatalf("new icon refs after swap: %d want 2", got)
+	}
+	d, _ = env.skills.GetDetail(ctx, "raven", "iconed")
+	if d.Skill.IconSHA256 == nil || *d.Skill.IconSHA256 != icon2 {
+		t.Fatalf("icon after swap: %+v", d.Skill.IconSHA256)
+	}
+
+	// republishing without icon keeps the current one
+	env.publish(t, "iconed", "d3", "1.2.0", nil)
+	d, _ = env.skills.GetDetail(ctx, "raven", "iconed")
+	if d.Skill.IconSHA256 == nil || *d.Skill.IconSHA256 != icon2 {
+		t.Fatalf("icon lost on plain republish: %+v", d.Skill.IconSHA256)
+	}
+}
+
+func TestUpdateIcon(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+	sk, _ := env.publish(t, "ico", "d", "1.0.0", nil)
+	icon := env.iconSHA(t)
+
+	// nil leaves the field unchanged
+	if err := env.skills.Update(ctx, env.owner, sk.ID, nil, nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	d, _ := env.skills.GetDetailByID(ctx, sk.ID)
+	if d.Skill.IconSHA256 != nil {
+		t.Fatalf("icon should stay unset: %+v", d.Skill.IconSHA256)
+	}
+
+	// set
+	if err := env.skills.Update(ctx, env.owner, sk.ID, nil, nil, nil, &icon); err != nil {
+		t.Fatal(err)
+	}
+	if got := env.blobRefs(t, icon); got != 2 {
+		t.Fatalf("icon refs after set: %d want 2", got)
+	}
+
+	// change: new gains a binding ref, old is released
+	icon2 := env.iconSHA(t)
+	if err := env.skills.Update(ctx, env.owner, sk.ID, nil, nil, nil, &icon2); err != nil {
+		t.Fatal(err)
+	}
+	if got := env.blobRefs(t, icon); got != 1 {
+		t.Fatalf("old icon refs after change: %d want 1", got)
+	}
+	if got := env.blobRefs(t, icon2); got != 2 {
+		t.Fatalf("new icon refs after change: %d want 2", got)
+	}
+
+	// setting the same icon again is a no-op
+	if err := env.skills.Update(ctx, env.owner, sk.ID, nil, nil, nil, &icon2); err != nil {
+		t.Fatal(err)
+	}
+	if got := env.blobRefs(t, icon2); got != 2 {
+		t.Fatalf("icon refs after no-op set: %d want 2", got)
+	}
+
+	// unknown / wrong-kind icon rejected
+	bad := "2222222222222222222222222222222222222222222222222222222222222222"
+	if err := env.skills.Update(ctx, env.owner, sk.ID, nil, nil, nil, &bad); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("unknown icon: %v", err)
+	}
+	archiveSHA := env.archiveSHA(t, "not-icon", "d")
+	if err := env.skills.Update(ctx, env.owner, sk.ID, nil, nil, nil, &archiveSHA); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("archive as icon: %v", err)
+	}
+
+	// clear releases the binding ref
+	empty := ""
+	if err := env.skills.Update(ctx, env.owner, sk.ID, nil, nil, nil, &empty); err != nil {
+		t.Fatal(err)
+	}
+	if got := env.blobRefs(t, icon2); got != 1 {
+		t.Fatalf("icon refs after clear: %d want 1 (upload only)", got)
+	}
+	d, _ = env.skills.GetDetailByID(ctx, sk.ID)
+	if d.Skill.IconSHA256 != nil {
+		t.Fatalf("icon should be cleared: %+v", d.Skill.IconSHA256)
+	}
+}
+
+// TestDeleteReleasesIcon: skill deletion releases the icon binding ref too.
+func TestDeleteReleasesIcon(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+	icon := env.iconSHA(t)
+	sk, _, err := env.skills.Publish(ctx, PublishInput{
+		Owner: env.owner, Version: "1.0.0",
+		ArchiveSHA256: env.archiveSHA(t, "gone-icon", "d"), IconSHA256: icon,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := env.skills.Delete(ctx, env.owner, sk.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := env.blobRefs(t, icon); got != 1 {
+		t.Fatalf("icon refs after delete: %d want 1 (upload only)", got)
+	}
 }
 
 func TestPublishReviewRequired(t *testing.T) {
 	env := newTestEnv(t)
-	path, pkg := buildPackage(t, "reviewed", "d")
 	sk, _, err := env.skills.Publish(context.Background(), PublishInput{
-		Owner: env.owner, Version: "1.0.0", ArchivePath: path, Package: pkg,
+		Owner: env.owner, Version: "1.0.0", ArchiveSHA256: env.archiveSHA(t, "reviewed", "d"),
 		ReviewRequired: true,
 	})
 	if err != nil {
@@ -198,9 +414,8 @@ func TestPublishReviewRequired(t *testing.T) {
 
 func TestPublishBadVersion(t *testing.T) {
 	env := newTestEnv(t)
-	path, pkg := buildPackage(t, "x", "d")
 	_, _, err := env.skills.Publish(context.Background(), PublishInput{
-		Owner: env.owner, Version: "v1.0", ArchivePath: path, Package: pkg,
+		Owner: env.owner, Version: "v1.0", ArchiveSHA256: env.archiveSHA(t, "x", "d"),
 	})
 	if !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("expected invalid input, got %v", err)
@@ -253,7 +468,7 @@ func TestSetStatusAndPermissions(t *testing.T) {
 	if _, err := env.skills.SetStatus(ctx, other, sk.ID, "takedown"); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("expected forbidden, got %v", err)
 	}
-	if err := env.skills.Update(ctx, other, sk.ID, nil, nil, []string{"x"}); !errors.Is(err, ErrForbidden) {
+	if err := env.skills.Update(ctx, other, sk.ID, nil, nil, []string{"x"}, nil); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("expected forbidden, got %v", err)
 	}
 	if err := env.skills.Delete(ctx, other, sk.ID); !errors.Is(err, ErrForbidden) {
@@ -289,9 +504,8 @@ func TestPublishOfficialAndUpdateMeta(t *testing.T) {
 	ctx := context.Background()
 
 	// Official=true on publish sets the flag at creation
-	path, pkg := buildPackage(t, "off", "original description")
 	sk, _, err := env.skills.Publish(ctx, PublishInput{
-		Owner: env.owner, Version: "1.0.0", ArchivePath: path, Package: pkg,
+		Owner: env.owner, Version: "1.0.0", ArchiveSHA256: env.archiveSHA(t, "off", "original description"),
 		Official: true,
 	})
 	if err != nil {
@@ -313,7 +527,7 @@ func TestPublishOfficialAndUpdateMeta(t *testing.T) {
 
 	// summary + current-version description are editable
 	sum, desc := "new summary", "new description"
-	if err := env.skills.Update(ctx, env.owner, sk.ID, &sum, &desc, nil); err != nil {
+	if err := env.skills.Update(ctx, env.owner, sk.ID, &sum, &desc, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	d, err = env.skills.GetDetail(ctx, "raven", "off")
@@ -333,7 +547,7 @@ func TestPublishOfficialAndUpdateMeta(t *testing.T) {
 	}
 
 	// nil fields leave everything unchanged; tags still replaceable
-	if err := env.skills.Update(ctx, env.owner, sk.ID, nil, nil, []string{"文档"}); err != nil {
+	if err := env.skills.Update(ctx, env.owner, sk.ID, nil, nil, []string{"文档"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	d, _ = env.skills.GetDetail(ctx, "raven", "off")
@@ -348,9 +562,8 @@ func TestPublishDescriptionOverride(t *testing.T) {
 
 	// form description replaces the package meta description for both the
 	// skill summary and the published version
-	path, pkg := buildPackage(t, "ovr", "package description")
 	sk, v, err := env.skills.Publish(ctx, PublishInput{
-		Owner: env.owner, Version: "1.0.0", ArchivePath: path, Package: pkg,
+		Owner: env.owner, Version: "1.0.0", ArchiveSHA256: env.archiveSHA(t, "ovr", "package description"),
 		Description: "  表单说明覆盖  ",
 	})
 	if err != nil {
@@ -361,9 +574,8 @@ func TestPublishDescriptionOverride(t *testing.T) {
 	}
 
 	// empty / whitespace-only description keeps the package meta description
-	path, pkg = buildPackage(t, "keep", "package description")
 	sk, v, err = env.skills.Publish(ctx, PublishInput{
-		Owner: env.owner, Version: "1.0.0", ArchivePath: path, Package: pkg,
+		Owner: env.owner, Version: "1.0.0", ArchiveSHA256: env.archiveSHA(t, "keep", "package description"),
 		Description: "   ",
 	})
 	if err != nil {
@@ -374,9 +586,8 @@ func TestPublishDescriptionOverride(t *testing.T) {
 	}
 
 	// over-length override rejected (1024 rune limit, same as update)
-	path, pkg = buildPackage(t, "toolong", "d")
 	_, _, err = env.skills.Publish(ctx, PublishInput{
-		Owner: env.owner, Version: "1.0.0", ArchivePath: path, Package: pkg,
+		Owner: env.owner, Version: "1.0.0", ArchiveSHA256: env.archiveSHA(t, "toolong", "d"),
 		Description: strings.Repeat("长", 1025),
 	})
 	if !errors.Is(err, ErrInvalidInput) {
@@ -389,9 +600,13 @@ func TestDeleteReleasesBlob(t *testing.T) {
 	ctx := context.Background()
 	sk, v := env.publish(t, "gone", "d", "1.0.0", nil)
 
-	blobPath, _ := env.blobs.Path(blob.KindArchive, v.SHA256)
+	blobPath, _ := env.blobs.Path(blob.KindArchive, v.SHA256, "")
 	if _, err := os.Stat(blobPath); err != nil {
 		t.Fatalf("blob should exist: %v", err)
+	}
+	// upload holds 1 ref, the version binding adds 1
+	if got := env.blobRefs(t, v.SHA256); got != 2 {
+		t.Fatalf("archive refs after publish: %d want 2 (upload+bind)", got)
 	}
 
 	if err := env.skills.Delete(ctx, env.owner, sk.ID); err != nil {
@@ -400,13 +615,25 @@ func TestDeleteReleasesBlob(t *testing.T) {
 	if _, err := env.skills.GetDetailByID(ctx, sk.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected not found, got %v", err)
 	}
-	if _, err := os.Stat(blobPath); !os.IsNotExist(err) {
-		t.Fatalf("blob file should be deleted: %v", err)
+	// delete releases the binding ref; the upload ref keeps the blob alive
+	if got := env.blobRefs(t, v.SHA256); got != 1 {
+		t.Fatalf("archive refs after delete: %d want 1", got)
+	}
+	if _, err := os.Stat(blobPath); err != nil {
+		t.Fatalf("blob should survive on the upload ref: %v", err)
 	}
 	var n int
 	_ = env.db.DB.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM skill_version WHERE skill_id = ?`, sk.ID).Scan(&n)
 	if n != 0 {
 		t.Fatalf("versions should cascade, %d left", n)
+	}
+
+	// releasing the upload ref deletes the file
+	if err := env.blobs.Release(ctx, env.db.DB, v.SHA256); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(blobPath); !os.IsNotExist(err) {
+		t.Fatalf("blob file should be deleted: %v", err)
 	}
 }

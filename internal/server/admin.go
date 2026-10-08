@@ -537,7 +537,12 @@ func (h *AdminHandler) setDesignOfficial(c *gin.Context, official bool) {
 			auth.Error(c, http.StatusInternalServerError, "internal", "failed to load design")
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"design": designDetailJSON(det)})
+		exts, err := previewExtMap(c.Request.Context(), h.blobs, h.stores.DB, det.Latest)
+		if err != nil {
+			auth.Error(c, http.StatusInternalServerError, "internal", "failed to load design")
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"design": designDetailJSON(det, exts)})
 	}
 }
 
@@ -559,7 +564,12 @@ func (h *AdminHandler) approveDesign(c *gin.Context) {
 			auth.Error(c, http.StatusInternalServerError, "internal", "failed to load design")
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"design": designDetailJSON(det)})
+		exts, err := previewExtMap(c.Request.Context(), h.blobs, h.stores.DB, det.Latest)
+		if err != nil {
+			auth.Error(c, http.StatusInternalServerError, "internal", "failed to load design")
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"design": designDetailJSON(det, exts)})
 	}
 }
 

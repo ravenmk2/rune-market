@@ -47,7 +47,7 @@ export interface PublishDesignInput {
   summary: string;
   version: string;
   tags: string[];
-  /** POST /blobs 预上传得到的 sha256,可空 */
+  /** POST /images 预上传得到的 sha256,可空 */
   preview_desktop?: string;
   preview_mobile?: string;
 }
@@ -61,17 +61,18 @@ export const designsApi = {
   content: (ns: string, name: string, ver: string) =>
     api.get<DesignContent>(`/designs/${ns}/${name}/versions/${ver}/content`),
 
-  /** 校验:raw body = .md 文本,不落库 */
-  validate: (name: string, md: Blob) =>
-    api.postRaw<DesignValidateReport>("/designs/validate", md, { name }),
-  /** 发布:raw body = .md 文本,元数据走 query */
-  publish: (md: Blob, input: PublishDesignInput) =>
+  /** 校验:JSON {name, content} 干跑,不落库 */
+  validate: (name: string, content: string) =>
+    api.post<DesignValidateReport>("/designs/validate", { name, content }),
+  /** 发布:JSON body,正文随元数据一起提交 */
+  publish: (content: string, input: PublishDesignInput) =>
     api
-      .postRaw<{ design: DesignDetail }>("/designs", md, {
+      .post<{ design: DesignDetail }>("/designs", {
+        content,
         name: input.name,
         summary: input.summary,
         version: input.version,
-        tags: input.tags.join(","),
+        tags: input.tags.length > 0 ? input.tags : undefined,
         preview_desktop: input.preview_desktop || undefined,
         preview_mobile: input.preview_mobile || undefined,
       })

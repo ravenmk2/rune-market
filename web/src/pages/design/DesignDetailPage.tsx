@@ -75,7 +75,11 @@ export function DesignDetailPage() {
       </div>
 
       <section className="detail-head">
-        <div className="detail-icon">{name.charAt(0).toUpperCase()}</div>
+        {current?.preview_desktop_url && (
+          <div className="detail-icon">
+            <img src={current.preview_desktop_url} alt={`${name} 预览`} />
+          </div>
+        )}
         <div>
           <h1>
             <span className="ns">{ns} /</span> {name} {design.official && <OfficialBadge />}

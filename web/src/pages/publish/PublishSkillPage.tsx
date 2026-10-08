@@ -1,14 +1,16 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { skillsApi } from "../../api/skills";
+import { archivesApi, skillsApi } from "../../api/skills";
 import type { ValidateReport } from "../../api/skills";
+import { imagesApi } from "../../api/images";
 import { ApiError } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import { Dropzone } from "../../components/Dropzone";
 import { CheckList } from "../../components/CheckList";
 import { HarnessChip } from "../../components/HarnessChip";
 import { PermList } from "../../components/PermList";
+import { AvatarCropDialog } from "../../components/AvatarCropDialog";
 import { formatBytes, shortSha } from "../../utils/format";
 
 const SEMVER_RE = /^\d+\.\d+\.\d+$/;
@@ -16,8 +18,10 @@ const SEMVER_RE = /^\d+\.\d+\.\d+$/;
 export function PublishSkillPage() {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const iconFileRef = useRef<HTMLInputElement>(null);
 
   const [file, setFile] = useState<File | null>(null);
+  const [archive, setArchive] = useState<{ sha256: string; size: number } | null>(null);
   const [report, setReport] = useState<ValidateReport | null>(null);
   const [validating, setValidating] = useState(false);
   const [validateError, setValidateError] = useState("");
@@ -25,19 +29,25 @@ export function PublishSkillPage() {
   const [description, setDescription] = useState("");
   const [descDirty, setDescDirty] = useState(false);
   const [tags, setTags] = useState("");
+  const [icon, setIcon] = useState<{ sha256: string; previewUrl: string } | null>(null);
+  const [iconBusy, setIconBusy] = useState(false);
+  const [iconError, setIconError] = useState("");
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState("");
 
   async function onFile(f: File) {
     setFile(f);
     setReport(null);
+    setArchive(null);
     setValidateError("");
     setError("");
     setValidating(true);
     try {
-      const r = await skillsApi.validate(f);
-      setReport(r);
-      if (!descDirty) setDescription(r.metadata.description);
+      const r = await archivesApi.upload(f);
+      setArchive({ sha256: r.sha256, size: r.size });
+      setReport(r.report);
+      if (!descDirty) setDescription(r.report.metadata.description);
     } catch (e) {
       setValidateError(e instanceof ApiError ? e.message : "校验请求失败,请重试");
     } finally {
@@ -45,13 +55,54 @@ export function PublishSkillPage() {
     }
   }
 
+  function pickIcon(f: File) {
+    if (f.size > 5 * 1024 * 1024) {
+      setIconError("图标文件不能超过 5 MB");
+      return;
+    }
+    setIconError("");
+    setCropSrc((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(f);
+    });
+  }
+
+  function closeCrop() {
+    if (cropSrc) URL.revokeObjectURL(cropSrc);
+    setCropSrc(null);
+  }
+
+  async function uploadIcon(blob: Blob) {
+    setIconBusy(true);
+    setIconError("");
+    try {
+      const r = await imagesApi.upload(blob);
+      setIcon((prev) => {
+        if (prev) URL.revokeObjectURL(prev.previewUrl);
+        return { sha256: r.sha256, previewUrl: URL.createObjectURL(blob) };
+      });
+      closeCrop();
+    } catch (e) {
+      setIconError(e instanceof ApiError ? e.message : "图标上传失败,请重试");
+    } finally {
+      setIconBusy(false);
+    }
+  }
+
+  function clearIcon() {
+    setIcon((prev) => {
+      if (prev) URL.revokeObjectURL(prev.previewUrl);
+      return null;
+    });
+  }
+
   const hasError = !!report?.checks.some((c) => c.level === "error");
   const canSubmit =
-    !!user && !!file && !!report && !hasError && !validating && !publishing;
+    !!user && !!archive && !!report && !hasError && !validating && !publishing;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!file || !report) {
+    if (!archive || !report) {
       setError("请先选择压缩包并通过校验");
       return;
     }
@@ -66,7 +117,13 @@ export function PublishSkillPage() {
         .split(/[,，]/)
         .map((t) => t.trim())
         .filter(Boolean);
-      const skill = await skillsApi.publish(file, version.trim(), tagList, description.trim());
+      const skill = await skillsApi.publish({
+        archive: archive.sha256,
+        version: version.trim(),
+        tags: tagList,
+        description: description.trim(),
+        icon: icon?.sha256,
+      });
       navigate(`/s/${skill.namespace}/${skill.name}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "发布失败,请稍后重试");
@@ -141,6 +198,57 @@ export function PublishSkillPage() {
                   onChange={(e) => setVersion(e.target.value)}
                 />
                 <div className="hint">语义化版本,重新上传同版本号将覆盖</div>
+              </div>
+
+              <div className="field">
+                <label>图标(可选)</label>
+                <div className="icon-field">
+                  <div className="detail-icon">
+                    {icon ? (
+                      <img src={icon.previewUrl} alt="图标预览" />
+                    ) : (
+                      (report?.metadata.name || "?").charAt(0).toUpperCase()
+                    )}
+                  </div>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <button
+                      className="btn btn-outline btn-sm"
+                      type="button"
+                      disabled={iconBusy}
+                      onClick={() => iconFileRef.current?.click()}
+                    >
+                      {icon ? "更换图片" : "选择图片"}
+                    </button>
+                    {icon && (
+                      <button
+                        className="btn btn-outline btn-sm"
+                        type="button"
+                        disabled={iconBusy}
+                        onClick={clearIcon}
+                      >
+                        移除
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    ref={iconFileRef}
+                    type="file"
+                    accept="image/png,image/jpeg"
+                    style={{ display: "none" }}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) pickIcon(f);
+                      e.target.value = "";
+                    }}
+                  />
+                </div>
+                {iconError && (
+                  <div className="alert err" style={{ marginTop: 10 }}>
+                    <span>!</span>
+                    <span>{iconError}</span>
+                  </div>
+                )}
+                <div className="hint">PNG / JPEG,裁剪为方形后导出 256px;缺省使用名称首字母占位</div>
               </div>
 
               <div className="field">
@@ -294,6 +402,18 @@ export function PublishSkillPage() {
           )}
         </aside>
       </div>
+
+      {cropSrc && (
+        <AvatarCropDialog
+          imageSrc={cropSrc}
+          busy={iconBusy}
+          title="裁剪图标"
+          outputSize={256}
+          cropShape="rect"
+          onCancel={closeCrop}
+          onConfirm={(blob) => void uploadIcon(blob)}
+        />
+      )}
     </main>
   );
 }

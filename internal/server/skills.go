@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -45,7 +46,7 @@ func (h *SkillsHandler) RegisterRoutes(api, apiAuth *gin.RouterGroup) {
 	api.GET("/skills/:ns/:name/versions/:ver/file", h.file)
 	api.GET("/skills/:ns/:name/versions/:ver/download", h.download)
 
-	apiAuth.POST("/skills/validate", h.validate)
+	apiAuth.POST("/archives", h.uploadArchive)
 	apiAuth.POST("/skills", h.publish)
 	apiAuth.GET("/mine/skills", h.mine)
 	apiAuth.PUT("/skills/:id", h.update)
@@ -70,6 +71,7 @@ func skillItemJSON(it hub.SkillItem) gin.H {
 		"status":         it.Skill.Status,
 		"tags":           tags,
 		"latest_version": it.LatestVersion,
+		"icon_url":       iconURL(it.Skill.IconSHA256, it.IconExt),
 		"download_count": it.Skill.DownloadCount,
 		"updated_at":     it.Skill.UpdatedAt,
 		"owner": gin.H{
@@ -77,6 +79,14 @@ func skillItemJSON(it hub.SkillItem) gin.H {
 			"nickname": it.OwnerNickname,
 		},
 	}
+}
+
+// iconURL maps a skill icon to its /images path (nil when absent).
+func iconURL(sha *string, ext string) any {
+	if sha == nil || *sha == "" || ext == "" {
+		return nil
+	}
+	return "/images/" + *sha + "." + ext
 }
 
 func versionJSON(v *store.SkillVersion) gin.H {
@@ -357,7 +367,14 @@ func (h *SkillsHandler) saveUpload(c *gin.Context) (path string, size int64, sum
 	return tmp.Name(), size, hex.EncodeToString(hash.Sum(nil)), cleanup, nil
 }
 
-func (h *SkillsHandler) validate(c *gin.Context) {
+// sha256Re constrains client-supplied blob references (§13: they are joined
+// into filesystem paths downstream).
+var sha256Re = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+// uploadArchive handles POST /archives (multi-stage publish step 1, §8.4):
+// raw body archive → content-addressed blob put (dedup) → inspect from the
+// stored blob → report + metadata back to the client.
+func (h *SkillsHandler) uploadArchive(c *gin.Context) {
 	path, size, sum, cleanup, err := h.saveUpload(c)
 	if err != nil {
 		status := http.StatusBadRequest
@@ -369,47 +386,61 @@ func (h *SkillsHandler) validate(c *gin.Context) {
 	}
 	defer cleanup()
 
-	pkg, err := skillpkg.Inspect(path, size, sum)
+	f, err := os.Open(path)
+	if err != nil {
+		auth.Error(c, http.StatusInternalServerError, "internal", "failed to read upload")
+		return
+	}
+	defer func() { _ = f.Close() }()
+
+	ctx := c.Request.Context()
+	if _, _, err := h.blobs.Put(ctx, h.hub.DB(), blob.KindArchive, f); err != nil {
+		h.logger.WithError(err).Error("skills: archive put failed")
+		auth.Error(c, http.StatusInternalServerError, "internal", "failed to store archive")
+		return
+	}
+	blobPath, err := h.blobs.Path(blob.KindArchive, sum, "")
+	if err != nil {
+		auth.Error(c, http.StatusInternalServerError, "internal", "failed to store archive")
+		return
+	}
+	pkg, err := skillpkg.Inspect(blobPath, size, sum)
 	if err != nil {
 		auth.Error(c, http.StatusBadRequest, "invalid_upload", err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, pkg.Report)
+	c.JSON(http.StatusOK, gin.H{
+		"sha256": sum, "size": size,
+		"report": pkg.Report, "metadata": pkg.Report.Metadata,
+	})
 }
 
+type publishSkillRequest struct {
+	Archive     string   `json:"archive"`
+	Version     string   `json:"version"`
+	Tags        []string `json:"tags"`
+	Description string   `json:"description"`
+	Icon        string   `json:"icon"`
+}
+
+// publish handles POST /skills (multi-stage publish step 2, §8.4): JSON
+// referencing a pre-uploaded archive blob (and optionally an icon image).
 func (h *SkillsHandler) publish(c *gin.Context) {
-	version := c.Query("version")
-	if version == "" {
-		auth.Error(c, http.StatusBadRequest, "invalid_argument", "version query param is required")
+	var req publishSkillRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		auth.Error(c, http.StatusBadRequest, "invalid_json", "request body must be valid JSON")
 		return
 	}
-	tags := parseTags(c.Query("tags"))
-
-	path, size, sum, cleanup, err := h.saveUpload(c)
-	if err != nil {
-		status := http.StatusBadRequest
-		if strings.Contains(err.Error(), "exceeds") {
-			status = http.StatusRequestEntityTooLarge
-		}
-		auth.Error(c, status, "invalid_upload", err.Error())
+	if !sha256Re.MatchString(req.Archive) {
+		auth.Error(c, http.StatusBadRequest, "invalid_argument", "archive must be a blob sha256 from POST /archives")
 		return
 	}
-	defer cleanup()
-
-	pkg, err := skillpkg.Inspect(path, size, sum)
-	if err != nil {
-		auth.Error(c, http.StatusBadRequest, "invalid_upload", err.Error())
+	if req.Version == "" {
+		auth.Error(c, http.StatusBadRequest, "invalid_argument", "version is required")
 		return
 	}
-	if pkg.Report.HasErrors() {
-		var details []string
-		for _, chk := range pkg.Report.Checks {
-			if chk.Level == skillpkg.LevelError {
-				details = append(details, chk.Title+": "+chk.Detail)
-			}
-		}
-		auth.ErrorDetails(c, http.StatusBadRequest, "invalid_package",
-			"package validation failed", details)
+	if req.Icon != "" && !sha256Re.MatchString(req.Icon) {
+		auth.Error(c, http.StatusBadRequest, "invalid_argument", "icon must be an image blob sha256 from POST /images")
 		return
 	}
 
@@ -417,11 +448,11 @@ func (h *SkillsHandler) publish(c *gin.Context) {
 	user := auth.CurrentUser(c)
 	sk, _, err := h.hub.Publish(ctx, hub.PublishInput{
 		Owner:          user,
-		Version:        version,
-		Tags:           tags,
-		Description:    c.Query("description"),
-		ArchivePath:    path,
-		Package:        pkg,
+		Version:        req.Version,
+		Tags:           req.Tags,
+		Description:    req.Description,
+		ArchiveSHA256:  req.Archive,
+		IconSHA256:     req.Icon,
 		ReviewRequired: h.getStr(ctx, "artifact_review", "none") == "required",
 		Official:       user.Role == store.RoleAdmin,
 	})
@@ -444,19 +475,6 @@ func (h *SkillsHandler) publish(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"skill": skillDetailJSON(d)})
-}
-
-func parseTags(raw string) []string {
-	var out []string
-	seen := map[string]bool{}
-	for _, t := range strings.Split(raw, ",") {
-		t = strings.TrimSpace(t)
-		if t != "" && !seen[t] {
-			seen[t] = true
-			out = append(out, t)
-		}
-	}
-	return out
 }
 
 // --- owner endpoints ---
@@ -487,6 +505,7 @@ type updateSkillRequest struct {
 	Summary     *string  `json:"summary"`
 	Description *string  `json:"description"` // edits the current version's description
 	Tags        []string `json:"tags"`
+	Icon        *string  `json:"icon"` // nil unchanged / "" clears / sha256 sets
 }
 
 func (h *SkillsHandler) update(c *gin.Context) {
@@ -495,8 +514,12 @@ func (h *SkillsHandler) update(c *gin.Context) {
 		auth.Error(c, http.StatusBadRequest, "invalid_json", "request body must be valid JSON")
 		return
 	}
+	if req.Icon != nil && *req.Icon != "" && !sha256Re.MatchString(*req.Icon) {
+		auth.Error(c, http.StatusBadRequest, "invalid_argument", "icon must be an image blob sha256 from POST /images")
+		return
+	}
 	err := h.hub.Update(c.Request.Context(), auth.CurrentUser(c), c.Param("id"),
-		req.Summary, req.Description, req.Tags)
+		req.Summary, req.Description, req.Tags, req.Icon)
 	h.writeManageResult(c, err)
 }
 

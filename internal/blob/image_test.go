@@ -3,6 +3,8 @@ package blob
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -41,58 +43,69 @@ func encodeJPEG(t *testing.T, img image.Image) []byte {
 	return buf.Bytes()
 }
 
-func TestPutImageNormalizesAndThumbs(t *testing.T) {
+func TestPutImagePreservesOriginalFormat(t *testing.T) {
 	storage, stores := testSetup(t)
 	ctx := context.Background()
 
 	for _, tc := range []struct {
 		name string
 		raw  []byte
+		ext  string
 	}{
-		{"png", encodePNG(t, makeImage(1280, 800))},
-		{"jpeg", encodeJPEG(t, makeImage(1280, 800))},
+		{"png", encodePNG(t, makeImage(1280, 800)), "png"},
+		{"jpeg", encodeJPEG(t, makeImage(1280, 800)), "jpg"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			sum, size, err := storage.PutImage(ctx, stores.DB, bytes.NewReader(tc.raw))
+			sum, ext, size, err := storage.PutImage(ctx, stores.DB, bytes.NewReader(tc.raw))
 			if err != nil {
 				t.Fatalf("put image: %v", err)
 			}
-			// stored file is PNG regardless of input format
-			f, err := storage.Open(KindImage, sum)
-			if err != nil {
-				t.Fatal(err)
+			if ext != tc.ext {
+				t.Fatalf("ext: %q want %q", ext, tc.ext)
 			}
-			cfg, format, err := image.DecodeConfig(f)
-			_ = f.Close()
-			if err != nil || format != "png" {
-				t.Fatalf("stored format: %q %v", format, err)
+			// sha256 is computed over the original bytes
+			expectSum := sha256.Sum256(tc.raw)
+			if sum != hex.EncodeToString(expectSum[:]) {
+				t.Fatalf("sum not over original bytes: %q", sum)
 			}
-			if cfg.Width != 1280 || cfg.Height != 800 {
-				t.Fatalf("dimensions: %+v", cfg)
-			}
-			if size <= 0 {
-				t.Fatalf("size: %d", size)
+			if size != int64(len(tc.raw)) {
+				t.Fatalf("size: %d want %d", size, len(tc.raw))
 			}
 
-			// _640 thumbnail: width 640, aspect preserved
-			p, _ := storage.Path(KindImage, sum)
-			thumb, err := os.Open(p[:len(p)-4] + "_640.png")
+			// stored file is byte-identical to the upload, at <sha>.<ext>
+			p, _ := storage.Path(KindImage, sum, ext)
+			stored, err := os.ReadFile(p)
+			if err != nil {
+				t.Fatalf("stored file: %v", err)
+			}
+			if !bytes.Equal(stored, tc.raw) {
+				t.Fatal("stored bytes differ from the upload")
+			}
+
+			// ext is recorded on the blob row
+			dbExt, err := storage.ImageExt(ctx, stores.DB, sum)
+			if err != nil || dbExt != tc.ext {
+				t.Fatalf("ImageExt: %q %v", dbExt, err)
+			}
+
+			// _640 thumbnail: always PNG, width 640, aspect preserved
+			thumb, err := os.Open(p[:len(p)-len(ext)-1] + "_640.png")
 			if err != nil {
 				t.Fatalf("thumb missing: %v", err)
 			}
-			tcfg, _, err := image.DecodeConfig(thumb)
+			tcfg, tformat, err := image.DecodeConfig(thumb)
 			_ = thumb.Close()
-			if err != nil {
-				t.Fatal(err)
+			if err != nil || tformat != "png" {
+				t.Fatalf("thumb format: %q %v", tformat, err)
 			}
 			if tcfg.Width != 640 || tcfg.Height != 400 {
 				t.Fatalf("thumb dimensions: %+v", tcfg)
 			}
 
-			// dedup: same normalized content → ref_count+1, no new file
-			sum2, _, err := storage.PutImage(ctx, stores.DB, bytes.NewReader(tc.raw))
-			if err != nil || sum2 != sum {
-				t.Fatalf("dedup: %v %q", err, sum2)
+			// dedup: same content → ref_count+1, no new file
+			sum2, ext2, _, err := storage.PutImage(ctx, stores.DB, bytes.NewReader(tc.raw))
+			if err != nil || sum2 != sum || ext2 != tc.ext {
+				t.Fatalf("dedup: %v %q %q", err, sum2, ext2)
 			}
 			var refs int
 			if err := stores.DB.QueryRowContext(ctx,
@@ -113,7 +126,7 @@ func TestPutImageNormalizesAndThumbs(t *testing.T) {
 			if _, err := os.Stat(p); !os.IsNotExist(err) {
 				t.Fatalf("original should be deleted: %v", err)
 			}
-			if _, err := os.Stat(p[:len(p)-4] + "_640.png"); !os.IsNotExist(err) {
+			if _, err := os.Stat(p[:len(p)-len(ext)-1] + "_640.png"); !os.IsNotExist(err) {
 				t.Fatalf("thumb should be deleted: %v", err)
 			}
 		})
@@ -122,12 +135,12 @@ func TestPutImageNormalizesAndThumbs(t *testing.T) {
 
 func TestPutImageSmallImageThumbNotUpscaled(t *testing.T) {
 	storage, stores := testSetup(t)
-	sum, _, err := storage.PutImage(context.Background(), stores.DB,
+	sum, _, _, err := storage.PutImage(context.Background(), stores.DB,
 		bytes.NewReader(encodePNG(t, makeImage(300, 200))))
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, _ := storage.Path(KindImage, sum)
+	p, _ := storage.Path(KindImage, sum, "png")
 	thumb, err := os.Open(p[:len(p)-4] + "_640.png")
 	if err != nil {
 		t.Fatal(err)
@@ -147,11 +160,11 @@ func TestPutImageRejects(t *testing.T) {
 	ctx := context.Background()
 
 	// not an image
-	if _, _, err := storage.PutImage(ctx, stores.DB, bytes.NewReader([]byte("hello world, not an image"))); err == nil {
+	if _, _, _, err := storage.PutImage(ctx, stores.DB, bytes.NewReader([]byte("hello world, not an image"))); err == nil {
 		t.Fatal("expected rejection of non-image")
 	}
 	// GIF magic is not accepted even if decodable
-	if _, _, err := storage.PutImage(ctx, stores.DB, bytes.NewReader([]byte("GIF89a...."))); err == nil {
+	if _, _, _, err := storage.PutImage(ctx, stores.DB, bytes.NewReader([]byte("GIF89a...."))); err == nil {
 		t.Fatal("expected rejection of GIF")
 	}
 	// oversized dimensions: forge a PNG header claiming 9000x9000 is hard;
@@ -162,10 +175,54 @@ func TestPutImageRejects(t *testing.T) {
 	}
 }
 
+func TestImageExts(t *testing.T) {
+	storage, stores := testSetup(t)
+	ctx := context.Background()
+
+	pngSum, _, _, err := storage.PutImage(ctx, stores.DB,
+		bytes.NewReader(encodePNG(t, makeImage(64, 64))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	jpgSum, _, _, err := storage.PutImage(ctx, stores.DB,
+		bytes.NewReader(encodeJPEG(t, makeImage(64, 64))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// an archive blob must not resolve as an image
+	archiveSum, _, err := storage.Put(ctx, stores.DB, KindArchive, bytes.NewReader([]byte("zip")))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	exts, err := storage.ImageExts(ctx, stores.DB, []string{
+		pngSum, jpgSum, archiveSum,
+		"0000000000000000000000000000000000000000000000000000000000000000",
+		pngSum, // duplicate is fine
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(exts) != 2 || exts[pngSum] != "png" || exts[jpgSum] != "jpg" {
+		t.Fatalf("exts: %v", exts)
+	}
+
+	// empty input short-circuits
+	exts, err = storage.ImageExts(ctx, stores.DB, nil)
+	if err != nil || len(exts) != 0 {
+		t.Fatalf("empty: %v %v", exts, err)
+	}
+
+	// single lookup: archive / missing → ErrNotFound
+	if _, err := storage.ImageExt(ctx, stores.DB, archiveSum); err != store.ErrNotFound {
+		t.Fatalf("archive ImageExt: %v", err)
+	}
+}
+
 func TestAddRef(t *testing.T) {
 	storage, stores := testSetup(t)
 	ctx := context.Background()
-	sum, _, err := storage.PutImage(ctx, stores.DB, bytes.NewReader(encodePNG(t, makeImage(64, 64))))
+	sum, _, _, err := storage.PutImage(ctx, stores.DB, bytes.NewReader(encodePNG(t, makeImage(64, 64))))
 	if err != nil {
 		t.Fatal(err)
 	}

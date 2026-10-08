@@ -451,7 +451,7 @@ function DoneStep({
         </div>
       </div>
 
-      {/* 安装完成后服务端切换到正常模式,整页跳转以重新探测 setup/status */}
+      {/* 安装完成后服务端切换到正常模式,整页跳转以重新探测 /site */}
       <a className="btn btn-accent" href="/login">
         进入 RuneMarket
       </a>

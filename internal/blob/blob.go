@@ -20,8 +20,8 @@ import (
 
 // Kinds select the storage directory (design §4).
 const (
-	KindArchive = "archive" // data/blobs/<sha256>      (no extension)
-	KindImage   = "image"   // data/images/<sha256>.png (M3)
+	KindArchive = "archive" // data/blobs/<sha256>          (no extension)
+	KindImage   = "image"   // data/images/<sha256>.<ext>   (png|jpg, §11)
 )
 
 var errUnknownKind = errors.New("blob: unknown kind")
@@ -45,20 +45,21 @@ func (s *Storage) dirFor(kind string) (string, error) {
 	}
 }
 
-func fileName(kind, sum string) string {
+func fileName(kind, sum, ext string) string {
 	if kind == KindImage {
-		return sum + ".png"
+		return sum + "." + ext
 	}
 	return sum
 }
 
-// Path returns the on-disk path for a blob.
-func (s *Storage) Path(kind, sum string) (string, error) {
+// Path returns the on-disk path for a blob. ext is the stored extension and
+// is only meaningful for KindImage; pass "" for KindArchive.
+func (s *Storage) Path(kind, sum, ext string) (string, error) {
 	dir, err := s.dirFor(kind)
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, fileName(kind, sum)), nil
+	return filepath.Join(dir, fileName(kind, sum, ext)), nil
 }
 
 // Put streams r into the store. Existing content short-circuits with
@@ -110,7 +111,7 @@ func (s *Storage) Put(ctx context.Context, q store.DBTX, kind string, r io.Reade
 		sum, kind, size, store.Now()); err != nil {
 		return "", 0, err
 	}
-	dst, err := s.Path(kind, sum)
+	dst, err := s.Path(kind, sum, "")
 	if err != nil {
 		return "", 0, err
 	}
@@ -154,6 +155,7 @@ func (s *Storage) maybeDelete(ctx context.Context, q store.DBTX, kind, sum strin
 	base := filepath.Join(dir, sum)
 	_ = os.Remove(base)
 	_ = os.Remove(base + ".png")
+	_ = os.Remove(base + ".jpg")
 	// derived thumbnails share the <sha256>_ prefix (§11)
 	matches, _ := filepath.Glob(base + "_*.png")
 	for _, m := range matches {
@@ -162,14 +164,25 @@ func (s *Storage) maybeDelete(ctx context.Context, q store.DBTX, kind, sum strin
 	return nil
 }
 
-// Open opens a blob file for streaming reads.
+// Open opens an archive blob file for streaming reads (images carry an
+// extension and are served from disk directly, see Path).
 func (s *Storage) Open(kind, sum string) (*os.File, error) {
 	if strings.Contains(sum, "/") || strings.Contains(sum, `\`) {
 		return nil, fmt.Errorf("blob: bad sha256 %q", sum)
 	}
-	p, err := s.Path(kind, sum)
+	p, err := s.Path(kind, sum, "")
 	if err != nil {
 		return nil, err
 	}
 	return os.Open(p)
+}
+
+// Stat returns the kind and size of a blob, or store.ErrNotFound.
+func (s *Storage) Stat(ctx context.Context, q store.DBTX, sum string) (kind string, size int64, err error) {
+	err = q.QueryRowContext(ctx,
+		"SELECT kind, size FROM `blob` WHERE sha256 = ?", sum).Scan(&kind, &size)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", 0, store.ErrNotFound
+	}
+	return kind, size, err
 }

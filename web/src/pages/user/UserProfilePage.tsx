@@ -104,8 +104,8 @@ export function UserProfilePage() {
             DESIGN.md
           </h2>
           <section className="grid">
-            {designs.map((d, i) => (
-              <DesignCard key={`${d.namespace}/${d.name}`} design={d} index={i} />
+            {designs.map((d) => (
+              <DesignCard key={`${d.namespace}/${d.name}`} design={d} />
             ))}
           </section>
         </>

@@ -3,7 +3,7 @@ import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { designsApi } from "../../api/designs";
 import type { DesignValidateReport } from "../../api/designs";
-import { blobsApi } from "../../api/blobs";
+import { imagesApi } from "../../api/images";
 import { ApiError } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import { Dropzone } from "../../components/Dropzone";
@@ -23,6 +23,7 @@ export function PublishDesignPage() {
   const navigate = useNavigate();
 
   const [file, setFile] = useState<File | null>(null);
+  const [content, setContent] = useState<string | null>(null);
   const [report, setReport] = useState<DesignValidateReport | null>(null);
   const [validating, setValidating] = useState(false);
   const [name, setName] = useState("");
@@ -38,10 +39,13 @@ export function PublishDesignPage() {
   async function onFile(f: File) {
     setFile(f);
     setReport(null);
+    setContent(null);
     setError("");
     setValidating(true);
     try {
-      setReport(await designsApi.validate(name.trim(), f));
+      const text = await f.text();
+      setContent(text);
+      setReport(await designsApi.validate(name.trim(), text));
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "校验请求失败,请重试");
     } finally {
@@ -52,7 +56,7 @@ export function PublishDesignPage() {
   async function uploadImage(f: File, kind: "desktop" | "mobile") {
     setImageError("");
     try {
-      const r = await blobsApi.upload(f);
+      const r = await imagesApi.upload(f);
       const uploaded = { sha256: r.sha256, previewUrl: URL.createObjectURL(f) };
       if (kind === "desktop") setDesktop(uploaded);
       else setMobile(uploaded);
@@ -62,7 +66,8 @@ export function PublishDesignPage() {
   }
 
   const hasError = !!report?.checks.some((c) => c.level === "error");
-  const canSubmit = !!user && !!file && !!report && !hasError && !validating && !publishing;
+  const canSubmit =
+    !!user && !!file && content !== null && !!report && !hasError && !validating && !publishing;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -78,14 +83,14 @@ export function PublishDesignPage() {
       setError("请填写一句话简介");
       return;
     }
-    if (!file || !report) {
+    if (!file || content === null || !report) {
       setError("请先选择 .md 文件并通过校验");
       return;
     }
     setError("");
     setPublishing(true);
     try {
-      const design = await designsApi.publish(file, {
+      const design = await designsApi.publish(content, {
         name: name.trim(),
         summary: summary.trim(),
         version: version.trim(),

@@ -7,6 +7,12 @@ interface AvatarCropDialogProps {
   busy: boolean;
   onCancel: () => void;
   onConfirm: (blob: Blob) => void;
+  /** 弹窗标题,默认"裁剪头像" */
+  title?: string;
+  /** 导出方形 PNG 的边长上限,默认 512 */
+  outputSize?: number;
+  /** 裁剪框形状:round 头像(默认)/ rect 方形图标 */
+  cropShape?: "round" | "rect";
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -18,10 +24,10 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
-/** 按裁剪区域从原图导出方形 PNG,边长不超过 512px */
-async function cropToBlob(src: string, area: Area): Promise<Blob> {
+/** 按裁剪区域从原图导出方形 PNG,边长不超过 outputSize */
+async function cropToBlob(src: string, area: Area, outputSize: number): Promise<Blob> {
   const img = await loadImage(src);
-  const size = Math.min(512, Math.round(area.width), Math.round(area.height));
+  const size = Math.min(outputSize, Math.round(area.width), Math.round(area.height));
   const canvas = document.createElement("canvas");
   canvas.width = size;
   canvas.height = size;
@@ -30,14 +36,22 @@ async function cropToBlob(src: string, area: Area): Promise<Blob> {
   ctx.drawImage(img, area.x, area.y, area.width, area.height, 0, 0, size, size);
   return new Promise((resolve, reject) =>
     canvas.toBlob(
-      (b) => (b ? resolve(b) : reject(new Error("头像导出失败"))),
+      (b) => (b ? resolve(b) : reject(new Error("图片导出失败"))),
       "image/png",
     ),
   );
 }
 
-/** 头像前端裁剪弹窗:拖动 + 缩放,确认后导出方形 PNG 再上传 */
-export function AvatarCropDialog({ imageSrc, busy, onCancel, onConfirm }: AvatarCropDialogProps) {
+/** 方形裁剪弹窗:拖动 + 缩放,确认后导出方形 PNG 再上传(头像 / 制品图标共用) */
+export function AvatarCropDialog({
+  imageSrc,
+  busy,
+  onCancel,
+  onConfirm,
+  title = "裁剪头像",
+  outputSize = 512,
+  cropShape = "round",
+}: AvatarCropDialogProps) {
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [area, setArea] = useState<Area | null>(null);
@@ -49,23 +63,23 @@ export function AvatarCropDialog({ imageSrc, busy, onCancel, onConfirm }: Avatar
     if (!area || busy) return;
     setError("");
     try {
-      onConfirm(await cropToBlob(imageSrc, area));
+      onConfirm(await cropToBlob(imageSrc, area, outputSize));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "头像处理失败,请重试");
+      setError(e instanceof Error ? e.message : "图片处理失败,请重试");
     }
   }
 
   return (
     <div className="dialog-mask" onClick={busy ? undefined : onCancel}>
       <div className="dialog" onClick={(e) => e.stopPropagation()}>
-        <h2>裁剪头像</h2>
+        <h2>{title}</h2>
         <div className="crop-area">
           <Cropper
             image={imageSrc}
             crop={crop}
             zoom={zoom}
             aspect={1}
-            cropShape="round"
+            cropShape={cropShape}
             showGrid={false}
             onCropChange={setCrop}
             onZoomChange={setZoom}

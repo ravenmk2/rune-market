@@ -1,19 +1,26 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { skillsApi } from "../../api/skills";
 import type { MySkillItem } from "../../api/skills";
+import { imagesApi } from "../../api/images";
 import { ApiError } from "../../api/client";
+import { AvatarCropDialog } from "../../components/AvatarCropDialog";
 
 export function EditSkillPage() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
+  const iconFileRef = useRef<HTMLInputElement>(null);
 
   const [item, setItem] = useState<MySkillItem | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [summary, setSummary] = useState("");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState("");
+  const [icon, setIcon] = useState<{ sha256: string; url: string } | null>(null);
+  const [iconRemoved, setIconRemoved] = useState(false);
+  const [iconBusy, setIconBusy] = useState(false);
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
@@ -55,18 +62,64 @@ export function EditSkillPage() {
         .split(/[,，]/)
         .map((t) => t.trim())
         .filter(Boolean);
+      const iconParam = icon ? icon.sha256 : iconRemoved ? "" : undefined;
       await skillsApi.update(item.id, {
         tags: tagList,
         summary: summary.trim(),
         description: description.trim(),
+        icon: iconParam,
       });
-      setItem({ ...item, tags: tagList, summary: summary.trim() });
+      setItem({
+        ...item,
+        tags: tagList,
+        summary: summary.trim(),
+        icon_url: icon ? icon.url : iconRemoved ? null : item.icon_url,
+      });
+      setIcon(null);
+      setIconRemoved(false);
       setSaved(true);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "保存失败,请稍后重试");
     } finally {
       setSaving(false);
     }
+  }
+
+  function pickIcon(f: File) {
+    if (f.size > 5 * 1024 * 1024) {
+      setError("图标文件不能超过 5 MB");
+      return;
+    }
+    setError("");
+    setCropSrc((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(f);
+    });
+  }
+
+  function closeCrop() {
+    if (cropSrc) URL.revokeObjectURL(cropSrc);
+    setCropSrc(null);
+  }
+
+  async function uploadIcon(blob: Blob) {
+    setIconBusy(true);
+    setError("");
+    try {
+      const r = await imagesApi.upload(blob);
+      setIcon({ sha256: r.sha256, url: r.url });
+      setIconRemoved(false);
+      closeCrop();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "图标上传失败,请重试");
+    } finally {
+      setIconBusy(false);
+    }
+  }
+
+  function clearIcon() {
+    setIcon(null);
+    setIconRemoved(true);
   }
 
   async function toggleTakedown() {
@@ -129,6 +182,7 @@ export function EditSkillPage() {
   }
 
   const takenDown = item.status === "taken_down";
+  const iconUrl = icon ? icon.url : iconRemoved ? null : item.icon_url;
 
   return (
     <main className="container">
@@ -174,6 +228,50 @@ export function EditSkillPage() {
         <div className="panel panel-pad">
           <h2>基本信息</h2>
           <form onSubmit={saveMeta}>
+            <div className="field">
+              <label>图标</label>
+              <div className="icon-field">
+                <div className="detail-icon">
+                  {iconUrl ? (
+                    <img src={iconUrl} alt="图标" />
+                  ) : (
+                    item.name.charAt(0).toUpperCase()
+                  )}
+                </div>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button
+                    className="btn btn-outline btn-sm"
+                    type="button"
+                    disabled={iconBusy}
+                    onClick={() => iconFileRef.current?.click()}
+                  >
+                    {iconUrl ? "更换图标" : "选择图片"}
+                  </button>
+                  {iconUrl && (
+                    <button
+                      className="btn btn-outline btn-sm"
+                      type="button"
+                      disabled={iconBusy}
+                      onClick={clearIcon}
+                    >
+                      移除
+                    </button>
+                  )}
+                </div>
+                <input
+                  ref={iconFileRef}
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  style={{ display: "none" }}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) pickIcon(f);
+                    e.target.value = "";
+                  }}
+                />
+              </div>
+              <div className="hint">PNG / JPEG,裁剪为方形后导出 256px;随"保存"一起生效</div>
+            </div>
             <div className="field">
               <label htmlFor="f-summary">简介</label>
               <input
@@ -249,6 +347,18 @@ export function EditSkillPage() {
           </div>
         </div>
       </div>
+
+      {cropSrc && (
+        <AvatarCropDialog
+          imageSrc={cropSrc}
+          busy={iconBusy}
+          title="裁剪图标"
+          outputSize={256}
+          cropShape="rect"
+          onCancel={closeCrop}
+          onConfirm={(blob) => void uploadIcon(blob)}
+        />
+      )}
     </main>
   );
 }

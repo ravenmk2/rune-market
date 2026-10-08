@@ -3,7 +3,9 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"image"
+	"image/jpeg"
 	"image/png"
 	"net/http"
 	"strings"
@@ -42,36 +44,88 @@ func makeTestPNG(t *testing.T, w, h int) []byte {
 	return buf.Bytes()
 }
 
+func makeTestJPEG(t *testing.T, w, h int) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, nil); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+// uploadImage does POST /images and returns the decoded response.
+func (e *skillsEnv) uploadImage(t *testing.T, img []byte) map[string]any {
+	t.Helper()
+	w := e.doRaw(t, http.MethodPost, "/api/v1/images", img, e.cookie)
+	if w.Code != http.StatusOK {
+		t.Fatalf("image upload: %d %s", w.Code, w.Body)
+	}
+	return decode(t, w)
+}
+
+// publishDesign does the JSON POST /designs.
+func (e *skillsEnv) publishDesign(t *testing.T, name, summary, version string, tags []string, desktop, mobile string) map[string]any {
+	t.Helper()
+	body := map[string]any{
+		"content": sampleDesign, "name": name, "summary": summary, "version": version,
+	}
+	if len(tags) > 0 {
+		body["tags"] = tags
+	}
+	if desktop != "" {
+		body["preview_desktop"] = desktop
+	}
+	if mobile != "" {
+		body["preview_mobile"] = mobile
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := e.do(t, http.MethodPost, "/api/v1/designs", string(raw), e.cookie, nil)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("publish design %s@%s: %d %s", name, version, w.Code, w.Body)
+	}
+	return decode(t, w)["design"].(map[string]any)
+}
+
 func TestDesignLifecycleAPI(t *testing.T) {
 	env := newSkillsEnvWithDesigns(t)
 
-	// upload preview images via POST /blobs
-	desktopSHA, mobileSHA := "", ""
-	for i, size := range [][2]int{{1280, 800}, {375, 812}} {
-		w := env.doRaw(t, http.MethodPost, "/api/v1/blobs",
-			makeTestPNG(t, size[0], size[1]), env.cookie)
-		if w.Code != http.StatusOK {
-			t.Fatalf("blob upload %d: %d %s", i, w.Code, w.Body)
-		}
-		m := decode(t, w)
-		if i == 0 {
-			desktopSHA = m["sha256"].(string)
-		} else {
-			mobileSHA = m["sha256"].(string)
-		}
+	// upload preview images via POST /images
+	desktop := env.uploadImage(t, makeTestPNG(t, 1280, 800))
+	mobile := env.uploadImage(t, makeTestPNG(t, 375, 812))
+	desktopSHA := desktop["sha256"].(string)
+	mobileSHA := mobile["sha256"].(string)
+	if desktop["ext"] != "png" || desktop["url"] != "/images/"+desktopSHA+".png" ||
+		desktop["thumb_url"] != "/images/"+desktopSHA+"_640.png" {
+		t.Fatalf("image response: %v", desktop)
 	}
 
 	// non-image rejected
-	w := env.doRaw(t, http.MethodPost, "/api/v1/blobs", []byte("not an image at all"), env.cookie)
+	w := env.doRaw(t, http.MethodPost, "/api/v1/images", []byte("not an image at all"), env.cookie)
 	if w.Code != http.StatusBadRequest {
-		t.Fatalf("non-image blob: %d", w.Code)
+		t.Fatalf("non-image: %d", w.Code)
+	}
+	// anonymous upload rejected
+	w = env.doRaw(t, http.MethodPost, "/api/v1/images", makeTestPNG(t, 8, 8), nil)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous image upload: %d", w.Code)
 	}
 
-	// validate: weak validation, checks only
-	w = env.doRaw(t, http.MethodPost, "/api/v1/designs/validate?name=acme-ui",
-		[]byte(sampleDesign), env.cookie)
+	// validate: weak validation, checks only (JSON dry run)
+	validateBody := func(name, content string) string {
+		raw, err := json.Marshal(map[string]string{"name": name, "content": content})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(raw)
+	}
+	w = env.do(t, http.MethodPost, "/api/v1/designs/validate",
+		validateBody("acme-ui", sampleDesign), env.cookie, nil)
 	if w.Code != http.StatusOK {
-		t.Fatalf("validate: %d", w.Code)
+		t.Fatalf("validate: %d %s", w.Code, w.Body)
 	}
 	m := decode(t, w)
 	if _, hasMeta := m["metadata"]; hasMeta {
@@ -95,22 +149,23 @@ func TestDesignLifecycleAPI(t *testing.T) {
 		t.Fatalf("checks: %v", checks)
 	}
 
-	// non-UTF-8 → error level
-	w = env.doRaw(t, http.MethodPost, "/api/v1/designs/validate?name=x",
-		[]byte("# T\n\x80\x81"), env.cookie)
+	// empty content → error level (JSON transport normalizes invalid UTF-8,
+	// so the empty-file check is the reachable error path)
+	w = env.do(t, http.MethodPost, "/api/v1/designs/validate",
+		`{"name":"x","content":""}`, env.cookie, nil)
 	m = decode(t, w)
 	if m["checks"].([]any)[0].(map[string]any)["level"] != "error" {
-		t.Fatalf("non-utf8: %v", m)
+		t.Fatalf("empty content: %v", m)
+	}
+	// malformed JSON → 400
+	w = env.do(t, http.MethodPost, "/api/v1/designs/validate", `{bad`, env.cookie, nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("bad json: %d", w.Code)
 	}
 
-	// publish with previews
-	q := "?name=acme-ui&summary=" + "Acme%20design%20system" +
-		"&version=1.0.0&tags=品牌,深色&preview_desktop=" + desktopSHA + "&preview_mobile=" + mobileSHA
-	w = env.doRaw(t, http.MethodPost, "/api/v1/designs"+q, []byte(sampleDesign), env.cookie)
-	if w.Code != http.StatusCreated {
-		t.Fatalf("publish: %d %s", w.Code, w.Body)
-	}
-	d := decode(t, w)["design"].(map[string]any)
+	// publish with previews (JSON body)
+	d := env.publishDesign(t, "acme-ui", "Acme design system", "1.0.0",
+		[]string{"品牌", "深色"}, desktopSHA, mobileSHA)
 	if d["namespace"] != "raven" || d["name"] != "acme-ui" || d["status"] != "published" {
 		t.Fatalf("design: %v", d)
 	}
@@ -126,10 +181,18 @@ func TestDesignLifecycleAPI(t *testing.T) {
 	sid := d["id"].(string)
 
 	// version conflict
-	w = env.doRaw(t, http.MethodPost, "/api/v1/designs?name=acme-ui&version=1.0.0",
-		[]byte(sampleDesign), env.cookie)
+	w = env.do(t, http.MethodPost, "/api/v1/designs",
+		`{"content":"# Acme Design\n\n## Overview\n\nx\n","name":"acme-ui","version":"1.0.0"}`, env.cookie, nil)
 	if w.Code != http.StatusConflict {
-		t.Fatalf("conflict: %d", w.Code)
+		t.Fatalf("conflict: %d %s", w.Code, w.Body)
+	}
+
+	// unknown preview blob → 400
+	w = env.do(t, http.MethodPost, "/api/v1/designs",
+		`{"content":"# Acme Design\n\n## Overview\n\nx\n","name":"acme-ui","version":"9.9.9",`+
+			`"preview_desktop":"0000000000000000000000000000000000000000000000000000000000000000"}`, env.cookie, nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("unknown preview: %d %s", w.Code, w.Body)
 	}
 
 	// list item contract
@@ -149,8 +212,12 @@ func TestDesignLifecycleAPI(t *testing.T) {
 
 	// versions + single version
 	w = env.do(t, http.MethodGet, "/api/v1/designs/raven/acme-ui/versions", "", nil, nil)
-	if len(decode(t, w)["items"].([]any)) != 1 {
+	versions := decode(t, w)["items"].([]any)
+	if len(versions) != 1 {
 		t.Fatalf("versions: %v", w.Body)
+	}
+	if versions[0].(map[string]any)["preview_desktop_url"] != "/images/"+desktopSHA+".png" {
+		t.Fatalf("version preview url: %v", versions[0])
 	}
 	w = env.do(t, http.MethodGet, "/api/v1/designs/raven/acme-ui/versions/1.0.0", "", nil, nil)
 	if decode(t, w)["version"].(map[string]any)["sha256"] == "" {
@@ -185,6 +252,16 @@ func TestDesignLifecycleAPI(t *testing.T) {
 			w.Header().Get("Content-Type") != "image/png" {
 			t.Fatalf("image %s: %d %v", p, w.Code, w.Header())
 		}
+	}
+	// a JPEG upload keeps its format and is served as image/jpeg
+	jpegImg := env.uploadImage(t, makeTestJPEG(t, 800, 600))
+	jpegSHA := jpegImg["sha256"].(string)
+	if jpegImg["ext"] != "jpg" || jpegImg["url"] != "/images/"+jpegSHA+".jpg" {
+		t.Fatalf("jpeg response: %v", jpegImg)
+	}
+	w = env.do(t, http.MethodGet, "/images/"+jpegSHA+".jpg", "", nil, nil)
+	if w.Code != http.StatusOK || w.Header().Get("Content-Type") != "image/jpeg" {
+		t.Fatalf("jpeg serve: %d %v", w.Code, w.Header())
 	}
 	// names failing the sha regex are rejected (no path traversal surface)
 	w = env.do(t, http.MethodGet, "/images/notasha.png", "", nil, nil)

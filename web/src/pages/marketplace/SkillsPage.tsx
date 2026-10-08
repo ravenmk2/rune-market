@@ -3,7 +3,7 @@ import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { skillsApi } from "../../api/skills";
 import type { SkillListItem } from "../../api/skills";
-import { siteApi } from "../../api/site";
+import { useSite } from "../../context/SiteContext";
 import type { ListResult } from "../../api/client";
 import { ApiError } from "../../api/client";
 import { SkillCard } from "../../components/SkillCard";
@@ -18,18 +18,7 @@ export function SkillsPage() {
   const [data, setData] = useState<ListResult<SkillListItem> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [tagline, setTagline] = useState("");
-
-  useEffect(() => {
-    let cancelled = false;
-    siteApi
-      .info()
-      .then((s) => !cancelled && setTagline(s.site_tagline ?? ""))
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const tagline = useSite().site_tagline || "";
 
   useEffect(() => {
     let cancelled = false;

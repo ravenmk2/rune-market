@@ -42,7 +42,7 @@ func (s *Storage) PutAvatar(userID string, r io.Reader) error {
 	if len(raw) > MaxImageUploadBytes {
 		return fmt.Errorf("image exceeds %dMB limit", MaxImageUploadBytes>>20)
 	}
-	src, err := decodeUpload(raw)
+	src, _, err := decodeUpload(raw)
 	if err != nil {
 		return err
 	}

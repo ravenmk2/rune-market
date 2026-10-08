@@ -267,14 +267,10 @@ func TestDeleteUserCascade(t *testing.T) {
 	env := newAdminEnv(t)
 	ctx := context.Background()
 	// other publishes a skill
-	w := env.doRaw(t, http.MethodPost, "/api/v1/skills?version=1.0.0",
-		buildSkillZip(t, "owned-thing", "d"), env.other)
-	if w.Code != http.StatusCreated {
-		t.Fatalf("publish: %d %s", w.Code, w.Body)
-	}
+	env.publishAs(t, env.other, "owned-thing", "d", "1.0.0", nil, "")
 	otherID := userID(t, env, "other")
 
-	w = env.do(t, http.MethodDelete, "/api/v1/admin/users/"+otherID, "", env.cookie, nil)
+	w := env.do(t, http.MethodDelete, "/api/v1/admin/users/"+otherID, "", env.cookie, nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("delete: %d %s", w.Code, w.Body)
 	}
@@ -438,6 +434,9 @@ func TestAdminSettings(t *testing.T) {
 	}
 	if got := site["version"]; got != "test-version" {
 		t.Fatalf("version: %v", got)
+	}
+	if got := site["mode"]; got != "normal" {
+		t.Fatalf("mode: %v", got)
 	}
 	// non-scalar values are rejected
 	w = env.do(t, http.MethodPut, "/api/v1/admin/settings",

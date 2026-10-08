@@ -79,7 +79,13 @@ export function SkillDetailPage() {
       </div>
 
       <section className="detail-head">
-        <div className="detail-icon">{name.charAt(0).toUpperCase()}</div>
+        {skill.icon_url ? (
+          <div className="detail-icon">
+            <img src={skill.icon_url} alt="" />
+          </div>
+        ) : (
+          <div className="detail-icon">{name.charAt(0).toUpperCase()}</div>
+        )}
         <div>
           <h1>
             <span className="ns">{ns} /</span> {name} {skill.official && <OfficialBadge />}

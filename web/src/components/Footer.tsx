@@ -1,17 +1,7 @@
-import { useEffect, useState } from "react";
-import { siteApi } from "../api/site";
+import { useSite } from "../context/SiteContext";
 
 export function Footer() {
-  const [version, setVersion] = useState("");
-
-  useEffect(() => {
-    siteApi
-      .info()
-      .then((info) => {
-        if (info.version) setVersion(info.version);
-      })
-      .catch(() => undefined);
-  }, []);
+  const version = useSite().version || "";
 
   return (
     <footer className="container">

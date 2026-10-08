@@ -73,6 +73,15 @@ func (s *SetupService) status(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"mode": "setup", "step": step})
 }
 
+// Site answers GET /api/v1/site in setup mode so the SPA boot probe hits one
+// endpoint in both modes (§5); normal mode serves the full site identity.
+func (s *SetupService) Site(c *gin.Context) {
+	s.mu.Lock()
+	step := s.step
+	s.mu.Unlock()
+	c.JSON(http.StatusOK, gin.H{"mode": "setup", "step": step})
+}
+
 // databaseRequest mirrors the wizard's structured form (frontend contract).
 type databaseRequest struct {
 	Driver   string `json:"driver"`   // sqlite | mysql

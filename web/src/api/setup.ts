@@ -1,14 +1,8 @@
 import { api } from "./client";
 
-/** 安装向导(docs/design.md §8.1,仅 setup 模式可用;安装完成后返回 404) */
+/** 安装向导(docs/design.md §8.1,仅 setup 模式可用;启动探测走 /site,见 App.tsx) */
 
 export type AppMode = "setup" | "normal";
-
-export interface SetupStatus {
-  mode: AppMode;
-  /** 当前向导步骤(字符串,仅 setup 模式返回) */
-  step?: "database" | "admin";
-}
 
 export type DatabaseDriver = "sqlite" | "mysql";
 
@@ -44,7 +38,6 @@ export interface AdminResult {
 }
 
 export const setupApi = {
-  status: () => api.get<SetupStatus>("/setup/status"),
   testDatabase: (config: MysqlDatabaseConfig) =>
     api.post<TestConnectionResult>("/setup/database/test", config),
   saveDatabase: (config: DatabaseConfig) => api.post<void>("/setup/database", config),

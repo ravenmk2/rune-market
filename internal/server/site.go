@@ -26,6 +26,7 @@ func (h *SiteHandler) RegisterRoutes(api *gin.RouterGroup) {
 func (h *SiteHandler) site(c *gin.Context) {
 	ctx := c.Request.Context()
 	c.JSON(http.StatusOK, gin.H{
+		"mode":             "normal",
 		"site_name":        h.getStr(ctx, "site_name", "RuneMarket"),
 		"site_description": h.getStr(ctx, "site_description", ""),
 		"site_tagline":     h.getStr(ctx, "site_tagline", ""),

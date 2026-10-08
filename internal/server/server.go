@@ -64,6 +64,7 @@ func NewSetupEngine(deps Deps, setupSvc *SetupService) *gin.Engine {
 
 	api := r.Group("/api/v1", auth.CSRFProtect())
 	setupSvc.RegisterRoutes(api.Group("/setup"))
+	api.GET("/site", setupSvc.Site)
 
 	r.NoRoute(spaHandler(deps.Static, func(c *gin.Context) {
 		if c.Request.URL.Path == "/setup" {

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"testing"
 
@@ -170,7 +171,13 @@ func buildSkillZip(t *testing.T, name, description string) []byte {
 			"metadata:\n  author: Raven\nwhen_to_use: testing\n---\n\n# Body\n",
 		name + "/references/usage.md": "# Usage\nSome docs.\n",
 	}
-	for n, b := range files {
+	names := make([]string, 0, len(files))
+	for n := range files {
+		names = append(names, n)
+	}
+	sort.Strings(names) // 固定条目顺序,产出字节确定性(去重断言依赖)
+	for _, n := range names {
+		b := files[n]
 		w, err := zw.Create(n)
 		if err != nil {
 			t.Fatal(err)
@@ -185,27 +192,71 @@ func buildSkillZip(t *testing.T, name, description string) []byte {
 	return buf.Bytes()
 }
 
-func (e *skillsEnv) publish(t *testing.T, name, description, version, tags string) map[string]any {
+// uploadArchive does POST /archives (staged publish step 1) and returns the
+// blob sha256.
+func (e *skillsEnv) uploadArchive(t *testing.T, zip []byte, cookie *http.Cookie) string {
 	t.Helper()
-	w := e.doRaw(t, http.MethodPost,
-		"/api/v1/skills?version="+version+"&tags="+tags,
-		buildSkillZip(t, name, description), e.cookie)
+	w := e.doRaw(t, http.MethodPost, "/api/v1/archives", zip, cookie)
+	if w.Code != http.StatusOK {
+		t.Fatalf("archive upload: %d %s", w.Code, w.Body)
+	}
+	return decode(t, w)["sha256"].(string)
+}
+
+func splitTags(raw string) []string {
+	var out []string
+	for _, tag := range strings.Split(raw, ",") {
+		if tag = strings.TrimSpace(tag); tag != "" {
+			out = append(out, tag)
+		}
+	}
+	return out
+}
+
+// publishAs runs the staged publish flow: POST /archives then the JSON
+// POST /skills, as the given user.
+func (e *skillsEnv) publishAs(t *testing.T, cookie *http.Cookie, name, description, version string, tags []string, icon string) map[string]any {
+	t.Helper()
+	body := map[string]any{
+		"archive": e.uploadArchive(t, buildSkillZip(t, name, description), cookie),
+		"version": version,
+	}
+	if len(tags) > 0 {
+		body["tags"] = tags
+	}
+	if icon != "" {
+		body["icon"] = icon
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := e.do(t, http.MethodPost, "/api/v1/skills", string(raw), cookie, nil)
 	if w.Code != http.StatusCreated {
 		t.Fatalf("publish %s@%s: %d %s", name, version, w.Code, w.Body)
 	}
 	return decode(t, w)["skill"].(map[string]any)
 }
 
-func TestValidateEndpoint(t *testing.T) {
+func (e *skillsEnv) publish(t *testing.T, name, description, version, tags string) map[string]any {
+	t.Helper()
+	return e.publishAs(t, e.cookie, name, description, version, splitTags(tags), "")
+}
+
+func TestArchivesEndpoint(t *testing.T) {
 	env := newSkillsEnv(t)
 
-	w := env.doRaw(t, http.MethodPost, "/api/v1/skills/validate",
+	w := env.doRaw(t, http.MethodPost, "/api/v1/archives",
 		buildSkillZip(t, "pdf-processing", "Extract PDFs"), env.cookie)
 	if w.Code != http.StatusOK {
-		t.Fatalf("validate: %d %s", w.Code, w.Body)
+		t.Fatalf("archives: %d %s", w.Code, w.Body)
 	}
 	m := decode(t, w)
-	checks, ok := m["checks"].([]any)
+	if m["sha256"].(string) == "" || m["size"].(float64) <= 0 {
+		t.Fatalf("sha256/size: %v", m)
+	}
+	report := m["report"].(map[string]any)
+	checks, ok := report["checks"].([]any)
 	if !ok || len(checks) == 0 {
 		t.Fatalf("checks: %v", m)
 	}
@@ -228,32 +279,118 @@ func TestValidateEndpoint(t *testing.T) {
 	if len(harnesses) != 1 || harnesses[0] != "claude-code" {
 		t.Fatalf("harnesses: %v", harnesses)
 	}
-	if meta["sha256"].(string) == "" || meta["size"].(float64) <= 0 {
-		t.Fatalf("hash/size: %v", meta)
+
+	// re-upload of identical content dedups to the same sha
+	w = env.doRaw(t, http.MethodPost, "/api/v1/archives",
+		buildSkillZip(t, "pdf-processing", "Extract PDFs"), env.cookie)
+	if decode(t, w)["sha256"].(string) != m["sha256"].(string) {
+		t.Fatal("identical archive should dedup to the same sha")
 	}
 
 	// hostile package produces error-level checks but still HTTP 200
-	w = env.doRaw(t, http.MethodPost, "/api/v1/skills/validate",
+	w = env.doRaw(t, http.MethodPost, "/api/v1/archives",
 		[]byte("definitely not an archive............"), env.cookie)
 	if w.Code != http.StatusOK {
-		t.Fatalf("validate hostile: %d", w.Code)
+		t.Fatalf("hostile archive: %d", w.Code)
 	}
-	m = decode(t, w)
+	report = decode(t, w)["report"].(map[string]any)
 	var hasErr bool
-	for _, c := range m["checks"].([]any) {
+	for _, c := range report["checks"].([]any) {
 		if c.(map[string]any)["level"] == "error" {
 			hasErr = true
 		}
 	}
 	if !hasErr {
-		t.Fatalf("expected error checks: %v", m)
+		t.Fatalf("expected error checks: %v", report)
 	}
 
-	// validate requires auth
-	w = env.doRaw(t, http.MethodPost, "/api/v1/skills/validate",
+	// upload requires auth
+	w = env.doRaw(t, http.MethodPost, "/api/v1/archives",
 		buildSkillZip(t, "x", "y"), nil)
 	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("anonymous validate: %d", w.Code)
+		t.Fatalf("anonymous upload: %d", w.Code)
+	}
+}
+
+// TestSkillIconAPI covers icon upload, publish-with-icon, icon_url in
+// list/detail, and PUT icon set/change/clear.
+func TestSkillIconAPI(t *testing.T) {
+	env := newSkillsEnvWithDesigns(t)
+
+	// upload a JPEG icon: original format preserved
+	w := env.doRaw(t, http.MethodPost, "/api/v1/images", makeTestJPEG(t, 256, 256), env.cookie)
+	if w.Code != http.StatusOK {
+		t.Fatalf("icon upload: %d %s", w.Code, w.Body)
+	}
+	img := decode(t, w)
+	iconSHA := img["sha256"].(string)
+	if img["ext"] != "jpg" || img["url"] != "/images/"+iconSHA+".jpg" ||
+		img["thumb_url"] != "/images/"+iconSHA+"_640.png" {
+		t.Fatalf("image response: %v", img)
+	}
+
+	// publish with icon
+	skill := env.publishAs(t, env.cookie, "iconed", "d", "1.0.0", nil, iconSHA)
+	if skill["icon_url"] != "/images/"+iconSHA+".jpg" {
+		t.Fatalf("icon_url: %v", skill["icon_url"])
+	}
+
+	// list carries icon_url
+	w = env.do(t, http.MethodGet, "/api/v1/skills", "", nil, nil)
+	item := decode(t, w)["items"].([]any)[0].(map[string]any)
+	if item["icon_url"] != "/images/"+iconSHA+".jpg" {
+		t.Fatalf("list icon_url: %v", item["icon_url"])
+	}
+
+	// the jpeg is served with its own content type
+	w = env.do(t, http.MethodGet, "/images/"+iconSHA+".jpg", "", nil, nil)
+	if w.Code != http.StatusOK || w.Header().Get("Content-Type") != "image/jpeg" {
+		t.Fatalf("jpeg serve: %d %v", w.Code, w.Header())
+	}
+	w = env.do(t, http.MethodGet, "/images/"+iconSHA+"_640.png", "", nil, nil)
+	if w.Code != http.StatusOK || w.Header().Get("Content-Type") != "image/png" {
+		t.Fatalf("thumb serve: %d %v", w.Code, w.Header())
+	}
+
+	sid := skill["id"].(string)
+
+	// change icon to a PNG
+	w = env.doRaw(t, http.MethodPost, "/api/v1/images", makeTestPNG(t, 256, 256), env.cookie)
+	icon2 := decode(t, w)["sha256"].(string)
+	w = env.do(t, http.MethodPut, "/api/v1/skills/"+sid, `{"icon":"`+icon2+`"}`, env.cookie, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("icon change: %d %s", w.Code, w.Body)
+	}
+	if got := decode(t, w)["skill"].(map[string]any)["icon_url"]; got != "/images/"+icon2+".png" {
+		t.Fatalf("icon_url after change: %v", got)
+	}
+
+	// clear icon
+	w = env.do(t, http.MethodPut, "/api/v1/skills/"+sid, `{"icon":""}`, env.cookie, nil)
+	if got := decode(t, w)["skill"].(map[string]any)["icon_url"]; got != nil {
+		t.Fatalf("icon_url after clear: %v", got)
+	}
+
+	// malformed / unknown / wrong-kind icon rejected
+	w = env.do(t, http.MethodPut, "/api/v1/skills/"+sid, `{"icon":"zzz"}`, env.cookie, nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("malformed icon: %d", w.Code)
+	}
+	w = env.do(t, http.MethodPut, "/api/v1/skills/"+sid,
+		`{"icon":"0000000000000000000000000000000000000000000000000000000000000000"}`, env.cookie, nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("unknown icon: %d", w.Code)
+	}
+	archiveSHA := env.uploadArchive(t, buildSkillZip(t, "not-icon", "d"), env.cookie)
+	w = env.do(t, http.MethodPut, "/api/v1/skills/"+sid, `{"icon":"`+archiveSHA+`"}`, env.cookie, nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("archive as icon: %d", w.Code)
+	}
+
+	// non-owner cannot set icon
+	w = env.do(t, http.MethodPut, "/api/v1/skills/"+sid, `{"icon":"`+icon2+`"}`, env.other, nil)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("non-owner icon: %d", w.Code)
 	}
 }
 
@@ -276,17 +413,30 @@ func TestSkillLifecycleAPI(t *testing.T) {
 	}
 
 	// version conflict → 409
-	w := env.doRaw(t, http.MethodPost, "/api/v1/skills?version=1.0.0",
-		buildSkillZip(t, "pdf-processing", "Extract PDFs"), env.cookie)
+	sha := env.uploadArchive(t, buildSkillZip(t, "pdf-processing", "Extract PDFs"), env.cookie)
+	w := env.do(t, http.MethodPost, "/api/v1/skills",
+		`{"archive":"`+sha+`","version":"1.0.0"}`, env.cookie, nil)
 	if w.Code != http.StatusConflict {
 		t.Fatalf("version conflict: %d %s", w.Code, w.Body)
 	}
 
 	// invalid version → 400
-	w = env.doRaw(t, http.MethodPost, "/api/v1/skills?version=v1",
-		buildSkillZip(t, "pdf-processing", "Extract PDFs"), env.cookie)
+	w = env.do(t, http.MethodPost, "/api/v1/skills",
+		`{"archive":"`+sha+`","version":"v1"}`, env.cookie, nil)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("bad version: %d", w.Code)
+	}
+
+	// unknown / malformed archive reference → 400 (staged publish guard)
+	w = env.do(t, http.MethodPost, "/api/v1/skills",
+		`{"archive":"0000000000000000000000000000000000000000000000000000000000000000","version":"9.9.9"}`, env.cookie, nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("unknown archive: %d %s", w.Code, w.Body)
+	}
+	w = env.do(t, http.MethodPost, "/api/v1/skills",
+		`{"archive":"not-a-sha","version":"9.9.9"}`, env.cookie, nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("malformed archive: %d", w.Code)
 	}
 
 	// new version

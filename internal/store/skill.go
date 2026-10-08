@@ -22,6 +22,7 @@ type Skill struct {
 	Official        bool
 	Status          string
 	LatestVersionID *string
+	IconSHA256      *string // optional image blob (§6.1)
 	DownloadCount   int64
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
@@ -33,20 +34,20 @@ type SkillStore struct {
 
 func NewSkillStore(db DBTX) *SkillStore { return &SkillStore{db: db} }
 
-const skillColumns = `id, owner_id, name, summary, official, status, latest_version_id, download_count, created_at, updated_at`
+const skillColumns = `id, owner_id, name, summary, official, status, latest_version_id, icon_sha256, download_count, created_at, updated_at`
 
 func (s *SkillStore) Create(ctx context.Context, sk *Skill) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO skill (`+skillColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO skill (`+skillColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		sk.ID, sk.OwnerID, sk.Name, sk.Summary, sk.Official, sk.Status,
-		sk.LatestVersionID, sk.DownloadCount, sk.CreatedAt, sk.UpdatedAt)
+		sk.LatestVersionID, sk.IconSHA256, sk.DownloadCount, sk.CreatedAt, sk.UpdatedAt)
 	return err
 }
 
 func scanSkill(row interface{ Scan(...any) error }) (*Skill, error) {
 	var sk Skill
 	err := row.Scan(&sk.ID, &sk.OwnerID, &sk.Name, &sk.Summary, &sk.Official,
-		&sk.Status, &sk.LatestVersionID, &sk.DownloadCount, &sk.CreatedAt, &sk.UpdatedAt)
+		&sk.Status, &sk.LatestVersionID, &sk.IconSHA256, &sk.DownloadCount, &sk.CreatedAt, &sk.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -77,6 +78,13 @@ func (s *SkillStore) UpdateAfterPublish(ctx context.Context, id, latestVersionID
 func (s *SkillStore) UpdateSummary(ctx context.Context, id, summary string, updatedAt time.Time) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE skill SET summary = ?, updated_at = ? WHERE id = ?`, summary, updatedAt, id)
+	return err
+}
+
+// UpdateIcon sets or clears (nil) the skill icon reference (§8.4).
+func (s *SkillStore) UpdateIcon(ctx context.Context, id string, iconSHA256 *string, updatedAt time.Time) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE skill SET icon_sha256 = ?, updated_at = ? WHERE id = ?`, iconSHA256, updatedAt, id)
 	return err
 }
 

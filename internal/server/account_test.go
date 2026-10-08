@@ -152,13 +152,9 @@ func TestUserProfile(t *testing.T) {
 
 	// raven publishes a skill and a design; one skill is taken down
 	env.publish(t, "pub-skill", "d", "1.0.0", "工具")
-	w := env.doRaw(t, http.MethodPost, "/api/v1/designs?name=pub-design&summary=s&version=1.0.0",
-		[]byte("# D\n"), env.cookie)
-	if w.Code != http.StatusCreated {
-		t.Fatalf("publish design: %d %s", w.Code, w.Body)
-	}
+	env.publishDesign(t, "pub-design", "s", "1.0.0", nil, "", "")
 	down := env.publish(t, "down-skill", "d", "1.0.0", "")
-	w = env.do(t, http.MethodPost, "/api/v1/skills/"+down["id"].(string)+"/takedown", "", env.cookie, nil)
+	w := env.do(t, http.MethodPost, "/api/v1/skills/"+down["id"].(string)+"/takedown", "", env.cookie, nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("takedown: %d %s", w.Code, w.Body)
 	}
@@ -225,13 +221,9 @@ func TestDeleteAccountSelf(t *testing.T) {
 		`UPDATE user SET has_avatar = 1 WHERE id = ?`, otherID); err != nil {
 		t.Fatal(err)
 	}
-	w := env.doRaw(t, http.MethodPost, "/api/v1/skills?version=1.0.0",
-		buildSkillZip(t, "my-thing", "d"), env.other)
-	if w.Code != http.StatusCreated {
-		t.Fatalf("publish: %d %s", w.Code, w.Body)
-	}
+	env.publishAs(t, env.other, "my-thing", "d", "1.0.0", nil, "")
 
-	w = env.do(t, http.MethodDelete, "/api/v1/account", "", env.other, nil)
+	w := env.do(t, http.MethodDelete, "/api/v1/account", "", env.other, nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("delete account: %d %s", w.Code, w.Body)
 	}

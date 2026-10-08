@@ -36,7 +36,7 @@ func makePNG(t *testing.T, w, h int) []byte {
 
 func (e *testEnv) uploadImage(t *testing.T, w, h int) string {
 	t.Helper()
-	sum, _, err := e.blobs.PutImage(context.Background(), e.db.DB, bytes.NewReader(makePNG(t, w, h)))
+	sum, _, _, err := e.blobs.PutImage(context.Background(), e.db.DB, bytes.NewReader(makePNG(t, w, h)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +191,7 @@ func TestDesignUpdateStatusDelete(t *testing.T) {
 	}
 
 	// delete releases the preview ref and removes files
-	previewPath, _ := env.blobs.Path(blob.KindImage, preview)
+	previewPath, _ := env.blobs.Path(blob.KindImage, preview, "png")
 	if err := env.designs.Delete(ctx, env.owner, d.ID); err != nil {
 		t.Fatal(err)
 	}
