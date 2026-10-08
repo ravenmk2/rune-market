@@ -27,7 +27,7 @@ func newAdminEnv(t *testing.T) *skillsEnv {
 	adminH := NewAdminHandler(stores, skillsSvc, designsSvc, blobs, deps.Logger,
 		"test-version", deps.DataDir, store.DialectSQLite)
 	env.engine = NewNormalEngine(deps, authSvc, skillsH, designsH, adminH,
-		NewSiteHandler(stores.Settings), nil)
+		NewSiteHandler(stores.Settings, "test-version"), nil)
 	return env
 }
 
@@ -428,6 +428,9 @@ func TestAdminSettings(t *testing.T) {
 	}
 	if got := decode(t, w)["site_name"]; got != "标量版" {
 		t.Fatalf("site_name: %v", got)
+	}
+	if got := decode(t, w)["version"]; got != "test-version" {
+		t.Fatalf("version: %v", got)
 	}
 	// non-scalar values are rejected
 	w = env.do(t, http.MethodPut, "/api/v1/admin/settings",

@@ -95,7 +95,7 @@ export function RegisterPage() {
               className="input mono"
               id="f-username"
               type="text"
-              placeholder="raven"
+              placeholder="请输入用户名"
               autoComplete="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
@@ -109,7 +109,7 @@ export function RegisterPage() {
               className="input"
               id="f-nickname"
               type="text"
-              placeholder="Raven"
+              placeholder="请输入昵称"
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
             />
@@ -122,7 +122,7 @@ export function RegisterPage() {
               className="input"
               id="f-password"
               type="password"
-              placeholder="至少 8 位"
+              placeholder="请输入密码(至少 8 位)"
               autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -135,7 +135,7 @@ export function RegisterPage() {
               className="input"
               id="f-password2"
               type="password"
-              placeholder="再次输入密码"
+              placeholder="请再次输入密码"
               autoComplete="new-password"
               value={password2}
               onChange={(e) => setPassword2(e.target.value)}

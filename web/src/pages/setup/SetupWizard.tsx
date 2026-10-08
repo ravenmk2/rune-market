@@ -38,7 +38,7 @@ function ErrorAlert({ message }: { message: string }) {
 /** 安装向导(三步,仅 setup 模式可达;契约 docs/design.md §8.1) */
 export function SetupWizard({ initialStep = 1 }: { initialStep?: number }) {
   const [step, setStep] = useState(initialStep);
-  const [dbConfig, setDbConfig] = useState<DatabaseConfig>({ driver: "sqlite", data_dir: "/data" });
+  const [dbConfig, setDbConfig] = useState<DatabaseConfig>({ driver: "sqlite", data_dir: "./data" });
   const [admin, setAdmin] = useState({ username: "", nickname: "", password: "" });
 
   return (
@@ -95,7 +95,7 @@ function DatabaseStep({
       : { driver: "mysql", host: "localhost:3306", database: "runemarket", username: "", password: "" };
 
   function selectSqlite() {
-    onChange({ driver: "sqlite", data_dir: config.driver === "sqlite" ? config.data_dir : "/data" });
+    onChange({ driver: "sqlite", data_dir: config.driver === "sqlite" ? config.data_dir : "./data" });
   }
 
   function selectMysql() {
@@ -150,7 +150,7 @@ function DatabaseStep({
       <Steps current={1} />
 
       <h1>选择数据库</h1>
-      <p className="sub">RuneMarket 将业务数据存储在你选择的数据库中,配置写入 /data/config.toml。</p>
+      <p className="sub">RuneMarket 将业务数据存储在你选择的数据库中,配置写入 ./data/config.toml。</p>
 
       <ErrorAlert message={error} />
 
@@ -177,7 +177,7 @@ function DatabaseStep({
                     onChange={(e) => onChange({ driver: "sqlite", data_dir: e.target.value })}
                   />
                   <div className="hint">
-                    数据库文件将保存为 {(config.data_dir || "/data").replace(/\/+$/, "")}/runemarket.db
+                    数据库文件将保存为 {(config.data_dir || "./data").replace(/\/+$/, "")}/runemarket.db
                   </div>
                 </div>
               )}
@@ -415,7 +415,7 @@ function DoneStep({
   const dataDir = dbConfig.driver === "sqlite" ? dbConfig.data_dir.replace(/\/+$/, "") : "";
   const dbSummary =
     dbConfig.driver === "sqlite"
-      ? `SQLite · ${dataDir || "/data"}/runemarket.db`
+      ? `SQLite · ${dataDir || "./data"}/runemarket.db`
       : `MySQL · ${dbConfig.host}/${dbConfig.database}`;
 
   return (
@@ -442,12 +442,12 @@ function DoneStep({
         <div className="row">
           <span className="k">主密钥</span>
           <span className="v mono">
-            /data/secret <span className="muted">(0600,已生成)</span>
+            ./data/secret <span className="muted">(0600,已生成)</span>
           </span>
         </div>
         <div className="row">
           <span className="k">配置文件</span>
-          <span className="v mono">/data/config.toml</span>
+          <span className="v mono">./data/config.toml</span>
         </div>
       </div>
 

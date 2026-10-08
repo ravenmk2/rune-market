@@ -131,7 +131,7 @@ export function SkillDetailPage() {
 
       <nav className="tabs">
         <NavLink to={base} end className={tabClass}>
-          说明
+          概览
         </NavLink>
         <NavLink to={`${base}/files`} className={tabClass}>
           文件{current && <span className="count">{current.file_count}</span>}
@@ -141,44 +141,135 @@ export function SkillDetailPage() {
         </NavLink>
       </nav>
 
-      <div className="layout-detail" style={{ marginTop: 20 }}>
-        <div>
-          <Routes>
-            <Route index element={<AboutTab version={current} />} />
-            <Route path="files" element={<FilesTab ns={ns} name={name} version={selectedVer} />} />
-            <Route
-              path="versions"
-              element={
-                <VersionsTab
-                  ns={ns}
-                  name={name}
-                  versions={versions}
-                  latest={skill.latest_version}
-                />
-              }
-            />
-          </Routes>
-        </div>
-        <Sidebar skill={skill} version={current} />
+      <div style={{ marginTop: 20, paddingBottom: 60 }}>
+        <Routes>
+          <Route index element={<OverviewTab skill={skill} version={current} />} />
+          <Route path="files" element={<FilesTab ns={ns} name={name} version={selectedVer} />} />
+          <Route
+            path="versions"
+            element={
+              <VersionsTab
+                ns={ns}
+                name={name}
+                versions={versions}
+                latest={skill.latest_version}
+              />
+            }
+          />
+        </Routes>
       </div>
     </main>
   );
 }
 
-/* ---------- 说明 tab:description 文本段落(M2 不做 markdown 渲染) ---------- */
+/* ---------- 概览 tab:说明正文 + 元信息/Harness/权限/环境/标签(原侧栏内容并入) ---------- */
 
-function AboutTab({ version }: { version?: VersionMeta }) {
-  const text = version?.description?.trim();
+function OverviewTab({ skill, version }: { skill: SkillDetail; version?: VersionMeta }) {
+  const desc = version?.description?.trim() ?? "";
+  const summary = skill.summary.trim();
+  // 与头部 summary 重复时跳过正文;description 与 summary 均为空才显示占位文案
+  const showBody = desc !== "" && desc !== summary;
+
   return (
-    <div className="panel panel-pad">
-      {text ? (
-        text.split(/\n{2,}/).map((para, i) => (
-          <p key={i} style={{ margin: "10px 0", color: "#3B3A35", whiteSpace: "pre-wrap" }}>
-            {para}
-          </p>
-        ))
-      ) : (
-        <p className="muted">作者未提供说明。</p>
+    <div>
+      {showBody && (
+        <div className="panel panel-pad">
+          {desc.split(/\n{2,}/).map((para, i) => (
+            <p key={i} style={{ margin: "10px 0", color: "#3B3A35", whiteSpace: "pre-wrap" }}>
+              {para}
+            </p>
+          ))}
+        </div>
+      )}
+      {!showBody && !desc && !summary && (
+        <div className="panel panel-pad">
+          <p className="muted">作者未提供说明。</p>
+        </div>
+      )}
+
+      <div className="overview-grid">
+        <div className="panel panel-pad">
+          <h2>信息</h2>
+          <div className="meta-list">
+            <div className="row">
+              <span className="k">名称</span>
+              <span className="v mono">{skill.name}</span>
+            </div>
+            {version && (
+              <div className="row">
+                <span className="k">版本</span>
+                <span className="v mono">{version.version}</span>
+              </div>
+            )}
+            <div className="row">
+              <span className="k">作者</span>
+              <span className="v">
+                <Link to={`/u/${skill.owner.username}`}>
+                  {version?.author || skill.owner.nickname || skill.owner.username}
+                </Link>{" "}
+                <span className="muted">(@{skill.owner.username})</span>
+              </span>
+            </div>
+            {version?.license && (
+              <div className="row">
+                <span className="k">许可</span>
+                <span className="v">{version.license}</span>
+              </div>
+            )}
+            {version && (
+              <div className="row">
+                <span className="k">SHA-256</span>
+                <span className="v mono">{shortSha(version.sha256)}</span>
+              </div>
+            )}
+            {version && (
+              <div className="row">
+                <span className="k">包大小</span>
+                <span className="v">{formatBytes(version.size)}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="panel panel-pad">
+          <h2>适用 Harness</h2>
+          {version && version.harnesses.length > 0 ? (
+            <div className="stack">
+              {version.harnesses.map((h) => (
+                <HarnessChip key={h} id={h} />
+              ))}
+            </div>
+          ) : (
+            <p className="muted" style={{ fontSize: 13.5 }}>
+              通用(适配所有 harness)
+            </p>
+          )}
+        </div>
+
+        <div className="panel panel-pad">
+          <h2>权限要求</h2>
+          <PermList permissions={version?.permissions ?? []} />
+        </div>
+
+        {version?.compatibility && (
+          <div className="panel panel-pad">
+            <h2>环境要求</h2>
+            <p className="muted" style={{ fontSize: 13.5 }}>
+              {version.compatibility}
+            </p>
+          </div>
+        )}
+      </div>
+
+      {skill.tags.length > 0 && (
+        <div className="panel panel-pad overview-tags">
+          <h2>标签</h2>
+          <div className="stack">
+            {skill.tags.map((t) => (
+              <Tag key={t} label={t} />
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );
@@ -345,93 +436,3 @@ function VersionsTab({
   );
 }
 
-/* ---------- 侧栏 ---------- */
-
-function Sidebar({ skill, version }: { skill: SkillDetail; version?: VersionMeta }) {
-  return (
-    <aside>
-      <div className="panel panel-pad">
-        <h2>信息</h2>
-        <div className="meta-list">
-          <div className="row">
-            <span className="k">名称</span>
-            <span className="v mono">{skill.name}</span>
-          </div>
-          {version && (
-            <div className="row">
-              <span className="k">版本</span>
-              <span className="v mono">{version.version}</span>
-            </div>
-          )}
-          <div className="row">
-            <span className="k">作者</span>
-            <span className="v">
-              <Link to={`/u/${skill.owner.username}`}>
-                {version?.author || skill.owner.nickname || skill.owner.username}
-              </Link>{" "}
-              <span className="muted">(@{skill.owner.username})</span>
-            </span>
-          </div>
-          {version?.license && (
-            <div className="row">
-              <span className="k">许可</span>
-              <span className="v">{version.license}</span>
-            </div>
-          )}
-          {version && (
-            <div className="row">
-              <span className="k">SHA-256</span>
-              <span className="v mono">{shortSha(version.sha256)}</span>
-            </div>
-          )}
-          {version && (
-            <div className="row">
-              <span className="k">包大小</span>
-              <span className="v">{formatBytes(version.size)}</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="panel panel-pad">
-        <h2>适用 Harness</h2>
-        {version && version.harnesses.length > 0 ? (
-          <div className="stack">
-            {version.harnesses.map((h) => (
-              <HarnessChip key={h} id={h} />
-            ))}
-          </div>
-        ) : (
-          <p className="muted" style={{ fontSize: 13.5 }}>
-            通用(适配所有 harness)
-          </p>
-        )}
-      </div>
-
-      <div className="panel panel-pad">
-        <h2>权限要求</h2>
-        <PermList permissions={version?.permissions ?? []} />
-      </div>
-
-      {version?.compatibility && (
-        <div className="panel panel-pad">
-          <h2>环境要求</h2>
-          <p className="muted" style={{ fontSize: 13.5 }}>
-            {version.compatibility}
-          </p>
-        </div>
-      )}
-
-      {skill.tags.length > 0 && (
-        <div className="panel panel-pad">
-          <h2>标签</h2>
-          <div className="stack">
-            {skill.tags.map((t) => (
-              <Tag key={t} label={t} />
-            ))}
-          </div>
-        </div>
-      )}
-    </aside>
-  );
-}

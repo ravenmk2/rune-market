@@ -19,12 +19,21 @@ marked.use({
 });
 
 /**
+ * 剥离文档开头的 YAML frontmatter:仅当首行为 `---` 且存在闭合 `---` 行时移除,
+ * 其余内容原样保留(Raw 视图不受影响,仍显示原文)。
+ */
+function stripFrontmatter(md: string): string {
+  const m = /^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/.exec(md);
+  return m ? md.slice(m[0].length) : md;
+}
+
+/**
  * DESIGN.md 渲染:marked → DOMPurify sanitize(§13 强制)。
  * 渲染后对文本中的 hex 色值加行内色块(§10 可选增强;只操作文本节点,不注入 HTML)。
  */
 export function MarkdownView({ markdown }: { markdown: string }) {
   const html = useMemo(
-    () => DOMPurify.sanitize(marked.parse(markdown, { async: false })),
+    () => DOMPurify.sanitize(marked.parse(stripFrontmatter(markdown), { async: false })),
     [markdown],
   );
   const ref = useRef<HTMLElement>(null);

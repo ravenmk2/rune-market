@@ -50,6 +50,25 @@ interface FileTreeProps {
   onSelect: (path: string) => void;
 }
 
+function FolderIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="currentColor">
+      <path d="M1.75 2.5a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h12.5a1 1 0 0 0 1-1v-7a1 1 0 0 0-1-1H7.6L6.3 3.1a1 1 0 0 0-.8-.6H1.75Z" />
+    </svg>
+  );
+}
+
+function FileIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="currentColor">
+      <path
+        fillRule="evenodd"
+        d="M3.5 1.5a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V5.2L9.8 1.5H3.5Zm5.8 1 3.2 3.2H9.3V2.5Z"
+      />
+    </svg>
+  );
+}
+
 /** 扁平路径列表建树,目录默认全部折叠、点击展开(§9:附属文件原样出现在树中) */
 export function FileTree({ paths, active, onSelect }: FileTreeProps) {
   const tree = useMemo(() => buildTree(paths), [paths]);
@@ -75,6 +94,7 @@ export function FileTree({ paths, active, onSelect }: FileTreeProps) {
               <>
                 <span className="node" onClick={() => toggle(n.path)}>
                   <span className="tw">{collapsed.has(n.path) ? "▸" : "▾"}</span>
+                  <FolderIcon />
                   {n.name}/
                 </span>
                 {!collapsed.has(n.path) && renderNodes(n.children)}
@@ -84,7 +104,8 @@ export function FileTree({ paths, active, onSelect }: FileTreeProps) {
                 className={`node${active === n.path ? " active" : ""}`}
                 onClick={() => onSelect(n.path)}
               >
-                <span className="tw">·</span>
+                <span className="tw"></span>
+                <FileIcon />
                 {n.name}
               </span>
             )}

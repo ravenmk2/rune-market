@@ -1,9 +1,24 @@
+import { useEffect, useState } from "react";
+import { siteApi } from "../api/site";
+
 export function Footer() {
+  const [version, setVersion] = useState("");
+
+  useEffect(() => {
+    siteApi
+      .info()
+      .then((info) => {
+        if (info.version) setVersion(info.version);
+      })
+      .catch(() => undefined);
+  }, []);
+
   return (
     <footer className="container">
       <div className="footer">
         <span>RuneMarket — Agent Skills 与 DESIGN.md 制品商店</span>
         <span className="spacer"></span>
+        {version && <span className="footer-version mono">{version}</span>}
         <a
           className="footer-link"
           href="https://github.com/ravenmk2/rune-market"

@@ -33,7 +33,7 @@ func newAccountEnv(t *testing.T) (*skillsEnv, *blob.Storage, string) {
 		"test-version", deps.DataDir, store.DialectSQLite)
 	accountH := NewAccountHandler(stores, skillsSvc, designsSvc, blobs, deps.Logger, dataDir)
 	env.engine = NewNormalEngine(deps, authSvc, skillsH, designsH, adminH,
-		NewSiteHandler(stores.Settings), accountH)
+		NewSiteHandler(stores.Settings, "test-version"), accountH)
 	return env, blobs, dataDir
 }
 

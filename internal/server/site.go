@@ -12,10 +12,11 @@ import (
 // site_description) so the SPA can brand itself without admin rights.
 type SiteHandler struct {
 	apiSettings
+	version string
 }
 
-func NewSiteHandler(settings *store.SettingStore) *SiteHandler {
-	return &SiteHandler{apiSettings: apiSettings{settings: settings}}
+func NewSiteHandler(settings *store.SettingStore, version string) *SiteHandler {
+	return &SiteHandler{apiSettings: apiSettings{settings: settings}, version: version}
 }
 
 func (h *SiteHandler) RegisterRoutes(api *gin.RouterGroup) {
@@ -27,5 +28,6 @@ func (h *SiteHandler) site(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"site_name":        h.getStr(ctx, "site_name", "RuneMarket"),
 		"site_description": h.getStr(ctx, "site_description", ""),
+		"version":          h.version,
 	})
 }

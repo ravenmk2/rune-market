@@ -310,7 +310,7 @@ CREATE TABLE setting (
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/site` | 站点名称/描述(公开,顶栏品牌读取) |
+| GET | `/site` | 站点名称/描述/版本号(公开,顶栏品牌与页脚读取) |
 | GET | `/skills?q=&tag=&official=&sort=&page=` | 列表(卡片所需字段) |
 | GET | `/skills/{ns}/{name}` | 详情(latest 版本元数据 + 统计) |
 | GET | `/skills/{ns}/{name}/versions` | 版本列表 |
@@ -454,7 +454,7 @@ web/src/
 - **版本注入**:`-ldflags "-s -w -X main.version=<ver>"`,代码内 `var version = "dev"` 兜底;release 取 git tag 去 `v` 前缀,本地构建用 `git describe --tags --always --dirty`
 - **lint**:golangci-lint v2,默认集 + `misspell`/`unconvert`/`gofmt`/`goimports`;CI 固定小版本,且其构建 Go 版本必须 ≥ go.mod 目标版本,升级 Go 工具链时同步升级
 - **Test CI**(`.github/workflows/test.yml`):push 主干分支 + PR + 手动触发;lint job 与 test job 并行;test 矩阵 ubuntu/windows/macos,`CGO_ENABLED=0`,先 `go vet` 后 `go test`;Go 版本经 `go-version-file: go.mod` 读取;两 job 编译前创建 `web/dist` 占位文件(`mkdir -p web/dist && touch web/dist/index.html`)
-- **dev 镜像**(`.github/workflows/docker-dev.yml`):push master/main/dev/develop + 手动触发;自带 lint + ubuntu 单平台 test 作为门禁(`needs` 串行,不复制三 OS 矩阵),通过后由 docker job 经 buildx 源码构建(Dockerfile 多阶段,`VERSION=dev-<sha>`)推送 `ghcr.io/ravenmk2/rune-market:dev`(linux/amd64+arm64);`packages: write` 仅授予 docker job;同分支并发取消(cancel-in-progress)
+- **dev 镜像**(`.github/workflows/docker-dev.yml`):push master/main/dev/develop + 手动触发;自带 lint + ubuntu 单平台 test 作为门禁(`needs` 串行,不复制三 OS 矩阵),通过后由 docker job 经 buildx 源码构建(Dockerfile 多阶段,`VERSION=$(git describe --tags --always --dirty)`,checkout `fetch-depth: 0` 取 tag 历史,与本地/发版口径一致)推送 `ghcr.io/ravenmk2/rune-market:dev`(仅 linux/amd64,无需 QEMU);`packages: write` 仅授予 docker job;同分支并发取消(cancel-in-progress)
 - **release**(`.goreleaser.yml` + `.github/workflows/release.yml` 两件套):tag `v*.*.*` 触发;goreleaser 固定 `~> v2`;linux/darwin/windows × amd64/arm64 交叉编译,windows 产物 zip、其余 tar.gz,产物名 `<name>_<version>_<os>_<arch>` + checksums.txt;changelog 从 Conventional Commits 生成(Features/Bug Fixes 两组,排除 docs/test/chore/ci/style/build 与合并提交),不维护 CHANGELOG.md;release 前先完成前端真实构建(dist 为真实产物)
 - **容器镜像**:双 Dockerfile 分工——`Dockerfile` 多阶段源码构建(node:24-alpine 前端 → golang:1.26-alpine 后端,`ARG VERSION/GOPROXY` 可调,供自托管用户 `docker build` 一键构建);`Dockerfile.release` 供 goreleaser `dockers_v2`(buildx 单段配置直接产出多架构 manifest)打包已交叉编译的二进制(与归档产物同源同构建,不在镜像内重复编译),GHCR 多架构 manifest,tag 为版本号(无 `v`)+ `latest`;两文件运行时层一致:alpine + ca-certificates,`COPY --chmod=755 ${TARGETPLATFORM}/runemarket /usr/local/bin/`(`Dockerfile` 为上下文根目录的 `runemarket`);容器内 `WORKDIR /app`,数据目录 `/app/data`(挂卷),EXPOSE 8080
 - **本地构建**:`scripts/build.sh`(Git Bash 可执行):dist 占位 → 版本注入 → 六平台产物到 `dist/`;Makefile 仅提供 `lint` 便捷目标

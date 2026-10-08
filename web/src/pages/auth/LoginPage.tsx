@@ -52,7 +52,7 @@ export function LoginPage() {
               className="input mono"
               id="f-username"
               type="text"
-              placeholder="raven"
+              placeholder="请输入用户名"
               autoComplete="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
@@ -65,7 +65,7 @@ export function LoginPage() {
               className="input"
               id="f-password"
               type="password"
-              placeholder="••••••••"
+              placeholder="请输入密码"
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
