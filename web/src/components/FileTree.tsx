@@ -34,16 +34,28 @@ function buildTree(paths: string[]): TreeNode[] {
   return root.children;
 }
 
+function collectDirs(nodes: TreeNode[], out: Set<string>): Set<string> {
+  for (const n of nodes) {
+    if (n.isDir) {
+      out.add(n.path);
+      collectDirs(n.children, out);
+    }
+  }
+  return out;
+}
+
 interface FileTreeProps {
   paths: string[];
   active: string | null;
   onSelect: (path: string) => void;
 }
 
-/** 扁平路径列表建树,目录可折叠(§9:附属文件原样出现在树中) */
+/** 扁平路径列表建树,目录默认全部折叠、点击展开(§9:附属文件原样出现在树中) */
 export function FileTree({ paths, active, onSelect }: FileTreeProps) {
   const tree = useMemo(() => buildTree(paths), [paths]);
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() =>
+    collectDirs(tree, new Set()),
+  );
 
   function toggle(path: string) {
     setCollapsed((prev) => {

@@ -5,6 +5,7 @@ import type { DesignDetail, DesignVersionMeta } from "../../api/designs";
 import { ApiError } from "../../api/client";
 import { OfficialBadge } from "../../components/Badge";
 import { Tag } from "../../components/Tag";
+import { useTitle } from "../../hooks/useTitle";
 import { PreviewSwitch } from "../../components/PreviewSwitch";
 import type { PreviewMode } from "../../components/PreviewSwitch";
 import { MarkdownView } from "../../components/MarkdownView";
@@ -21,6 +22,8 @@ export function DesignDetailPage() {
   const [selectedVer, setSelectedVer] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  useTitle(design ? `${design.name} · RuneMarket` : undefined);
 
   useEffect(() => {
     let cancelled = false;

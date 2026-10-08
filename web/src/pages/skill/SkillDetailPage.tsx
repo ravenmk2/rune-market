@@ -9,6 +9,8 @@ import { HarnessChip } from "../../components/HarnessChip";
 import { PermList } from "../../components/PermList";
 import { FileTree } from "../../components/FileTree";
 import { CodeView } from "../../components/CodeView";
+import { MarkdownView } from "../../components/MarkdownView";
+import { useTitle } from "../../hooks/useTitle";
 import { formatBytes, formatCount, formatDate, shortSha } from "../../utils/format";
 
 function tabClass({ isActive }: { isActive: boolean }) {
@@ -22,6 +24,8 @@ export function SkillDetailPage() {
   const [selectedVer, setSelectedVer] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  useTitle(skill ? `${skill.name} · RuneMarket` : undefined);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,7 +84,7 @@ export function SkillDetailPage() {
           <h1>
             <span className="ns">{ns} /</span> {name} {skill.official && <OfficialBadge />}
           </h1>
-          <p className="detail-sub">{skill.summary || current?.description}</p>
+          <p className="detail-sub">{skill.summary}</p>
           <div className="detail-meta-row">
             <span>
               发布者{" "}
@@ -186,6 +190,7 @@ function FilesTab({ ns, name, version }: { ns: string; name: string; version: st
   const [files, setFiles] = useState<FileEntry[] | null>(null);
   const [active, setActive] = useState<string | null>(null);
   const [content, setContent] = useState<FileContent | null>(null);
+  const [mdMode, setMdMode] = useState<"preview" | "raw">("preview");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -194,6 +199,7 @@ function FilesTab({ ns, name, version }: { ns: string; name: string; version: st
     setFiles(null);
     setActive(null);
     setContent(null);
+    setMdMode("preview");
     skillsApi
       .files(ns, name, version)
       .then((list) => {
@@ -244,22 +250,49 @@ function FilesTab({ ns, name, version }: { ns: string; name: string; version: st
     );
   }
 
+  const isMd = !!active && active.toLowerCase().endsWith(".md");
+
   return (
     <div className="panel">
       <div className="fileview">
-        <FileTree paths={files.map((f) => f.path)} active={active} onSelect={setActive} />
+        <FileTree
+          key={version}
+          paths={files.map((f) => f.path)}
+          active={active}
+          onSelect={(p) => {
+            setActive(p);
+            setMdMode("preview");
+          }}
+        />
         <div className="file-preview">
           <div className="file-preview-head">
-            <span>{active}</span>
-            {content && (
-              <span className="size">
-                {formatBytes(content.size)} · {content.content_type === "text" ? "text" : "binary"}
+            <span className="path">{active}</span>
+            {isMd && (
+              <span className="preview-switch">
+                <span
+                  className={mdMode === "preview" ? "active" : ""}
+                  onClick={() => setMdMode("preview")}
+                >
+                  预览
+                </span>
+                <span
+                  className={mdMode === "raw" ? "active" : ""}
+                  onClick={() => setMdMode("raw")}
+                >
+                  Raw
+                </span>
               </span>
             )}
           </div>
           {content ? (
             content.content_type === "text" ? (
-              <CodeView content={content.content} />
+              isMd && mdMode === "preview" ? (
+                <div className="md-view">
+                  <MarkdownView markdown={content.content} />
+                </div>
+              ) : (
+                <CodeView content={content.content} path={content.path} />
+              )
             ) : (
               <div className="codebox muted">二进制文件,无法预览。</div>
             )

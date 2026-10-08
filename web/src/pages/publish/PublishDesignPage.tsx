@@ -26,7 +26,7 @@ export function PublishDesignPage() {
   const [report, setReport] = useState<DesignValidateReport | null>(null);
   const [validating, setValidating] = useState(false);
   const [name, setName] = useState("");
-  const [version, setVersion] = useState("");
+  const [version, setVersion] = useState("0.1.0");
   const [tags, setTags] = useState("");
   const [summary, setSummary] = useState("");
   const [desktop, setDesktop] = useState<UploadedImage | null>(null);

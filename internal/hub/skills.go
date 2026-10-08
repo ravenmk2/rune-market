@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"unicode/utf8"
 
 	"golang.org/x/mod/semver"
 
@@ -73,6 +74,7 @@ type PublishInput struct {
 	ArchivePath    string   // inspected temp file on disk
 	Package        *skillpkg.Package
 	ReviewRequired bool // artifact_review=required
+	Official       bool // admin publishes default to official (§8.4)
 }
 
 // Publish runs §9.8 in a single DB transaction: blob put → skill upsert →
@@ -136,7 +138,8 @@ func (s *Skills) Publish(ctx context.Context, in PublishInput) (*store.Skill, *s
 		}
 		sk = &store.Skill{
 			ID: store.NewID(), OwnerID: in.Owner.ID, Name: meta.Name,
-			Status: status, CreatedAt: now, UpdatedAt: now,
+			Official: in.Official,
+			Status:   status, CreatedAt: now, UpdatedAt: now,
 		}
 		if err := skills.Create(ctx, sk); err != nil {
 			return nil, nil, err
@@ -351,13 +354,9 @@ func (s *Skills) getSkill(ctx context.Context, id string) (*store.Skill, error) 
 	return store.NewSkillStore(s.db).GetByID(ctx, id)
 }
 
-// UpdateTags replaces the tag set of a skill (§8.4 PUT /skills/{id}).
-func (s *Skills) UpdateTags(ctx context.Context, actor *store.User, skillID string, tags []string) error {
-	for _, t := range tags {
-		if !store.ValidateTagName(t) {
-			return fmt.Errorf("%w: invalid tag %q", ErrInvalidInput, t)
-		}
-	}
+// Update edits summary, current-version description and/or tags
+// (§8.4 PUT /skills/{id}). Nil pointer/slice leaves the field unchanged.
+func (s *Skills) Update(ctx context.Context, actor *store.User, skillID string, summary, description *string, tags []string) error {
 	sk, err := s.getSkill(ctx, skillID)
 	if err != nil {
 		return err
@@ -365,7 +364,34 @@ func (s *Skills) UpdateTags(ctx context.Context, actor *store.User, skillID stri
 	if err := canManage(actor, sk); err != nil {
 		return err
 	}
-	return store.NewTagStore(s.db, s.dialect).SetSkillTags(ctx, skillID, tags)
+	if summary != nil {
+		if utf8.RuneCountInString(*summary) > 1024 {
+			return fmt.Errorf("%w: summary too long", ErrInvalidInput)
+		}
+		if err := store.NewSkillStore(s.db).UpdateSummary(ctx, skillID, *summary, store.Now()); err != nil {
+			return err
+		}
+	}
+	if description != nil {
+		if utf8.RuneCountInString(*description) > 1024 {
+			return fmt.Errorf("%w: description too long", ErrInvalidInput)
+		}
+		if sk.LatestVersionID == nil {
+			return fmt.Errorf("%w: skill has no version", ErrInvalidInput)
+		}
+		if err := store.NewSkillVersionStore(s.db).UpdateDescription(ctx, *sk.LatestVersionID, *description); err != nil {
+			return err
+		}
+	}
+	if tags != nil {
+		for _, t := range tags {
+			if !store.ValidateTagName(t) {
+				return fmt.Errorf("%w: invalid tag %q", ErrInvalidInput, t)
+			}
+		}
+		return store.NewTagStore(s.db, s.dialect).SetSkillTags(ctx, skillID, tags)
+	}
+	return nil
 }
 
 // SetStatus handles takedown/restore (§8.4).

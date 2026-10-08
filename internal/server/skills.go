@@ -414,13 +414,15 @@ func (h *SkillsHandler) publish(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
+	user := auth.CurrentUser(c)
 	sk, _, err := h.hub.Publish(ctx, hub.PublishInput{
-		Owner:          auth.CurrentUser(c),
+		Owner:          user,
 		Version:        version,
 		Tags:           tags,
 		ArchivePath:    path,
 		Package:        pkg,
 		ReviewRequired: h.getStr(ctx, "artifact_review", "none") == "required",
+		Official:       user.Role == store.RoleAdmin,
 	})
 	switch {
 	case errors.Is(err, hub.ErrVersionExists):
@@ -435,7 +437,7 @@ func (h *SkillsHandler) publish(c *gin.Context) {
 		return
 	}
 
-	d, err := h.hub.GetDetail(ctx, auth.CurrentUser(c).Username, sk.Name)
+	d, err := h.hub.GetDetail(ctx, user.Username, sk.Name)
 	if err != nil {
 		auth.Error(c, http.StatusInternalServerError, "internal", "failed to load skill")
 		return
@@ -481,7 +483,9 @@ func (h *SkillsHandler) mine(c *gin.Context) {
 }
 
 type updateSkillRequest struct {
-	Tags []string `json:"tags"`
+	Summary     *string  `json:"summary"`
+	Description *string  `json:"description"` // edits the current version's description
+	Tags        []string `json:"tags"`
 }
 
 func (h *SkillsHandler) update(c *gin.Context) {
@@ -490,7 +494,8 @@ func (h *SkillsHandler) update(c *gin.Context) {
 		auth.Error(c, http.StatusBadRequest, "invalid_json", "request body must be valid JSON")
 		return
 	}
-	err := h.hub.UpdateTags(c.Request.Context(), auth.CurrentUser(c), c.Param("id"), req.Tags)
+	err := h.hub.Update(c.Request.Context(), auth.CurrentUser(c), c.Param("id"),
+		req.Summary, req.Description, req.Tags)
 	h.writeManageResult(c, err)
 }
 

@@ -61,7 +61,7 @@ export function SkillsPage() {
           <span>⌕</span>
           <input
             type="text"
-            placeholder="搜索技能或设计系统,例如 pdf、frontend、dark theme…"
+            placeholder="搜索技能,例如 pdf、frontend、code review…"
             value={input}
             onChange={(e) => setInput(e.target.value)}
           />

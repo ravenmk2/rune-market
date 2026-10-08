@@ -74,6 +74,12 @@ func (s *SkillStore) UpdateAfterPublish(ctx context.Context, id, latestVersionID
 	return err
 }
 
+func (s *SkillStore) UpdateSummary(ctx context.Context, id, summary string, updatedAt time.Time) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE skill SET summary = ?, updated_at = ? WHERE id = ?`, summary, updatedAt, id)
+	return err
+}
+
 func (s *SkillStore) UpdateStatus(ctx context.Context, id, status string, updatedAt time.Time) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE skill SET status = ?, updated_at = ? WHERE id = ?`, status, updatedAt, id)

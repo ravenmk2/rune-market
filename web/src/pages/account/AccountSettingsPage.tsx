@@ -6,6 +6,7 @@ import { usersApi } from "../../api/users";
 import { ApiError } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import { Avatar } from "../../components/Avatar";
+import { AvatarCropDialog } from "../../components/AvatarCropDialog";
 
 export function AccountSettingsPage() {
   const { user, loading: authLoading, refresh, logout } = useAuth();
@@ -19,6 +20,7 @@ export function AccountSettingsPage() {
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileSaved, setProfileSaved] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
   const [profileError, setProfileError] = useState("");
 
   const [curPassword, setCurPassword] = useState("");
@@ -68,22 +70,39 @@ export function AccountSettingsPage() {
 
   const currentUser = user;
 
-  async function uploadAvatar(file: File) {
-    if (file.size > 5 * 1024 * 1024) {
-      setProfileError("头像文件不能超过 5 MB");
-      return;
-    }
+  async function uploadAvatar(image: Blob) {
     setAvatarBusy(true);
     setProfileError("");
     try {
-      await accountApi.uploadAvatar(file);
+      await accountApi.uploadAvatar(image);
       // updated_at 变更 → Avatar 的 ?v= 随之失效刷新
       await refresh();
+      if (cropSrc) {
+        URL.revokeObjectURL(cropSrc);
+        setCropSrc(null);
+      }
     } catch (e) {
       setProfileError(e instanceof ApiError ? e.message : "头像上传失败,请重试");
     } finally {
       setAvatarBusy(false);
     }
+  }
+
+  function pickAvatar(file: File) {
+    if (file.size > 5 * 1024 * 1024) {
+      setProfileError("头像文件不能超过 5 MB");
+      return;
+    }
+    setProfileError("");
+    setCropSrc((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(file);
+    });
+  }
+
+  function closeCrop() {
+    if (cropSrc) URL.revokeObjectURL(cropSrc);
+    setCropSrc(null);
   }
 
   async function removeAvatar() {
@@ -216,13 +235,14 @@ export function AccountSettingsPage() {
                   style={{ display: "none" }}
                   onChange={(e) => {
                     const f = e.target.files?.[0];
-                    if (f) void uploadAvatar(f);
+                    if (f) pickAvatar(f);
                     e.target.value = "";
                   }}
                 />
               </div>
               <div className="hint">
-                支持 PNG / JPG,最大 5 MB;上传后自动裁剪为正方形并生成 32 / 64 / 128px 缩略图。
+                支持 PNG / JPG,最大 5 MB;选择后可在弹窗中拖动、缩放裁剪,上传后服务端生成 32 / 64 / 128px
+                缩略图。
               </div>
             </div>
             <div className="field">
@@ -349,6 +369,15 @@ export function AccountSettingsPage() {
           </div>
         </div>
       </div>
+
+      {cropSrc && (
+        <AvatarCropDialog
+          imageSrc={cropSrc}
+          busy={avatarBusy}
+          onCancel={closeCrop}
+          onConfirm={(blob) => void uploadAvatar(blob)}
+        />
+      )}
     </main>
   );
 }

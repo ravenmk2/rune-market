@@ -349,8 +349,9 @@ func (h *DesignsHandler) publish(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
+	user := auth.CurrentUser(c)
 	d, _, err := h.hub.Publish(ctx, hub.DesignPublishInput{
-		Owner:          auth.CurrentUser(c),
+		Owner:          user,
 		Name:           name,
 		Summary:        q.Get("summary"),
 		Version:        version,
@@ -359,6 +360,7 @@ func (h *DesignsHandler) publish(c *gin.Context) {
 		PreviewDesktop: q.Get("preview_desktop"),
 		PreviewMobile:  q.Get("preview_mobile"),
 		ReviewRequired: h.getStr(ctx, "artifact_review", "none") == "required",
+		Official:       user.Role == store.RoleAdmin,
 	})
 	switch {
 	case errors.Is(err, hub.ErrVersionExists):
@@ -373,7 +375,7 @@ func (h *DesignsHandler) publish(c *gin.Context) {
 		return
 	}
 
-	det, err := h.hub.GetDetail(ctx, auth.CurrentUser(c).Username, d.Name)
+	det, err := h.hub.GetDetail(ctx, user.Username, d.Name)
 	if err != nil {
 		auth.Error(c, http.StatusInternalServerError, "internal", "failed to load design")
 		return

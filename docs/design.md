@@ -182,7 +182,7 @@ CREATE TABLE skill (
   id                CHAR(32)   PRIMARY KEY,
   owner_id          CHAR(32)   NOT NULL REFERENCES user(id),
   name              VARCHAR(64) NOT NULL,
-  summary           VARCHAR(1024) NOT NULL DEFAULT '', -- 取自最新版本 description
+  summary           VARCHAR(1024) NOT NULL DEFAULT '', -- 取自最新版本 description,发布后可编辑
   official          BOOLEAN     NOT NULL DEFAULT 0,
   status            VARCHAR(16) NOT NULL DEFAULT 'published', -- pending | published | taken_down
   latest_version_id CHAR(32),
@@ -196,7 +196,7 @@ CREATE TABLE skill_version (
   id            CHAR(32)   PRIMARY KEY,
   skill_id      CHAR(32)   NOT NULL REFERENCES skill(id) ON DELETE CASCADE,
   version       VARCHAR(32) NOT NULL,        -- semver,不带 v 前缀
-  description   TEXT        NOT NULL,
+  description   TEXT        NOT NULL,             -- 当前版本可由 owner/admin 编辑
   license       VARCHAR(255) NOT NULL DEFAULT '',
   compatibility VARCHAR(500) NOT NULL DEFAULT '',
   author        VARCHAR(255) NOT NULL DEFAULT '',
@@ -266,7 +266,7 @@ CREATE TABLE setting (
 - **存储统计**:`SELECT SUM(size) FROM blob` + `avatars/` 目录扫描(头像量小,实时扫描即可)
 - **latest 指针**:发布新版本时更新 `latest_version_id`;下架/删除最新版本后回退到剩余最高 semver
 - **下载计数**:下载接口内 `download_count+1`(允许近似,不做事件表)
-- **setting 键**:`site_name`、`site_description`、`page_size`、`registration_mode`(open/approval/closed)、`artifact_review`(none/required)、`upload_max_mb`、`anonymous_browse`、`anonymous_download`
+- **setting 键**:`site_name`、`site_description`、`page_size`、`registration_mode`(open/approval/closed,安装后默认 closed)、`artifact_review`(none/required)、`upload_max_mb`、`anonymous_browse`、`anonymous_download`
 
 ## 7. 认证、会话与权限
 
@@ -334,9 +334,11 @@ CREATE TABLE setting (
 | POST | `/designs/validate?name=` | **raw body = .md 文本**,返回弱验证报告 |
 | POST | `/designs?name=&summary=&version=&tags=&preview_desktop=&preview_mobile=` | **raw body = .md 文本**;preview_* 为先前 `POST /blobs` 得到的 sha256(可空) |
 | GET | `/mine/skills` / `/mine/designs` | 我的制品 |
-| PUT | `/skills/{id}` | 改标签(JSON;designmd 还可改 summary) |
+| PUT | `/skills/{id}` | 改标签(JSON;skill 还可改 summary 与当前版本 description,designmd 可改 summary) |
 | POST | `/skills/{id}/takedown` `/restore` | 下架/恢复(designmd 对称) |
 | DELETE | `/skills/{id}` / `/designs/{id}` | 删除(级联版本,事务内减 blob 引用) |
+
+管理员发布的新制品默认 `official=1`(普通用户为 0);事后仍可经管理面板 official/unofficial 端点调整。
 
 ### 8.5 管理面板(`requireAdmin`)
 

@@ -11,6 +11,8 @@ export function EditSkillPage() {
 
   const [item, setItem] = useState<MySkillItem | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [summary, setSummary] = useState("");
+  const [description, setDescription] = useState("");
   const [tags, setTags] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -26,7 +28,15 @@ export function EditSkillPage() {
         const found = r.items.find((s) => s.id === id) ?? null;
         setItem(found);
         setNotFound(!found);
-        if (found) setTags(found.tags.join(", "));
+        if (found) {
+          setTags(found.tags.join(", "));
+          setSummary(found.summary);
+          // 说明是版本级字段,从详情取当前最新版本预填
+          skillsApi
+            .detail(found.namespace, found.name)
+            .then((d) => !cancelled && setDescription(d.latest?.description ?? ""))
+            .catch(() => undefined);
+        }
       })
       .catch((e) => !cancelled && setError(e instanceof ApiError ? e.message : "加载失败"));
     return () => {
@@ -34,7 +44,7 @@ export function EditSkillPage() {
     };
   }, [id]);
 
-  async function saveTags(e: FormEvent) {
+  async function saveMeta(e: FormEvent) {
     e.preventDefault();
     if (!item) return;
     setSaving(true);
@@ -45,8 +55,12 @@ export function EditSkillPage() {
         .split(/[,，]/)
         .map((t) => t.trim())
         .filter(Boolean);
-      await skillsApi.updateTags(item.id, tagList);
-      setItem({ ...item, tags: tagList });
+      await skillsApi.update(item.id, {
+        tags: tagList,
+        summary: summary.trim(),
+        description: description.trim(),
+      });
+      setItem({ ...item, tags: tagList, summary: summary.trim() });
       setSaved(true);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "保存失败,请稍后重试");
@@ -136,11 +150,11 @@ export function EditSkillPage() {
         <div className="alert ok" style={{ margin: "14px 0 18px" }}>
           <span>✓</span>
           <span>
-            名称与简介来自包内 SKILL.md,如需修改请
+            名称来自包内 SKILL.md,如需改名请
             <Link to="/publish" style={{ fontWeight: 600 }}>
               发布新版本
             </Link>
-            。
+            ;简介与说明可直接在下方修改。
           </span>
         </div>
 
@@ -158,14 +172,37 @@ export function EditSkillPage() {
         )}
 
         <div className="panel panel-pad">
-          <h2>标签</h2>
-          <form onSubmit={saveTags}>
+          <h2>基本信息</h2>
+          <form onSubmit={saveMeta}>
             <div className="field">
+              <label htmlFor="f-summary">简介</label>
+              <input
+                className="input"
+                id="f-summary"
+                type="text"
+                placeholder="一句话简介"
+                value={summary}
+                onChange={(e) => setSummary(e.target.value)}
+              />
+              <div className="hint">展示在列表卡片与详情页头部</div>
+            </div>
+            <div className="field">
+              <label htmlFor="f-desc">说明</label>
+              <textarea
+                className="textarea"
+                id="f-desc"
+                placeholder="详细介绍这个技能的用法与注意事项"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+              <div className="hint">作用于当前最新版本,展示在详情页"说明"标签页</div>
+            </div>
+            <div className="field">
+              <label htmlFor="f-tags">标签</label>
               <input
                 className="input"
                 id="f-tags"
                 type="text"
-                aria-label="标签"
                 placeholder="用逗号分隔,如 文档处理, pdf"
                 value={tags}
                 onChange={(e) => setTags(e.target.value)}

@@ -56,6 +56,7 @@ type DesignPublishInput struct {
 	PreviewDesktop string // sha256 from POST /blobs, optional
 	PreviewMobile  string // sha256 from POST /blobs, optional
 	ReviewRequired bool
+	Official       bool // admin publishes default to official (§8.4)
 }
 
 // Publish runs the §10.3 write path in a single transaction: preview blob
@@ -124,7 +125,8 @@ func (s *Designs) Publish(ctx context.Context, in DesignPublishInput) (*store.De
 		}
 		d = &store.Designmd{
 			ID: store.NewID(), OwnerID: in.Owner.ID, Name: in.Name,
-			Status: status, CreatedAt: now, UpdatedAt: now,
+			Official: in.Official,
+			Status:   status, CreatedAt: now, UpdatedAt: now,
 		}
 		if err := designs.Create(ctx, d); err != nil {
 			return nil, nil, err

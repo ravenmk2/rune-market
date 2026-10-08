@@ -21,7 +21,7 @@ export function PublishSkillPage() {
   const [report, setReport] = useState<ValidateReport | null>(null);
   const [validating, setValidating] = useState(false);
   const [validateError, setValidateError] = useState("");
-  const [version, setVersion] = useState("");
+  const [version, setVersion] = useState("0.1.0");
   const [tags, setTags] = useState("");
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState("");

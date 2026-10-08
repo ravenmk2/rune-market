@@ -111,7 +111,9 @@ export const skillsApi = {
       .then((r) => r.skill),
 
   mine: () => api.get<ListResult<MySkillItem>>("/mine/skills"),
-  updateTags: (id: string, tags: string[]) => api.put<void>(`/skills/${id}`, { tags }),
+  /** 更新标签 / 简介 / 说明(summary 为制品级字段,description 作用于当前最新版本) */
+  update: (id: string, input: { tags?: string[]; summary?: string; description?: string }) =>
+    api.put<void>(`/skills/${id}`, input),
   takedown: (id: string) => api.post<void>(`/skills/${id}/takedown`),
   restore: (id: string) => api.post<void>(`/skills/${id}/restore`),
   remove: (id: string) => api.delete<void>(`/skills/${id}`),

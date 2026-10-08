@@ -63,6 +63,13 @@ func (s *SkillVersionStore) GetByID(ctx context.Context, id string) (*SkillVersi
 		`SELECT `+skillVersionColumns+` FROM skill_version WHERE id = ?`, id))
 }
 
+// UpdateDescription edits one version's description (post-publish edit).
+func (s *SkillVersionStore) UpdateDescription(ctx context.Context, id, description string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE skill_version SET description = ? WHERE id = ?`, description, id)
+	return err
+}
+
 func (s *SkillVersionStore) GetBySkillVersion(ctx context.Context, skillID, version string) (*SkillVersion, error) {
 	return scanSkillVersion(s.db.QueryRowContext(ctx,
 		`SELECT `+skillVersionColumns+` FROM skill_version WHERE skill_id = ? AND version = ?`,

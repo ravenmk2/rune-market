@@ -31,7 +31,7 @@ var defaultSettings = map[string]string{
 	"site_name":          "RuneMarket",
 	"site_description":   "",
 	"page_size":          "20",
-	"registration_mode":  "open",
+	"registration_mode":  "closed",
 	"artifact_review":    "none",
 	"upload_max_mb":      "20",
 	"anonymous_browse":   "true",

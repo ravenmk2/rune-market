@@ -252,7 +252,7 @@ func TestSetStatusAndPermissions(t *testing.T) {
 	if _, err := env.skills.SetStatus(ctx, other, sk.ID, "takedown"); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("expected forbidden, got %v", err)
 	}
-	if err := env.skills.UpdateTags(ctx, other, sk.ID, []string{"x"}); !errors.Is(err, ErrForbidden) {
+	if err := env.skills.Update(ctx, other, sk.ID, nil, nil, []string{"x"}); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("expected forbidden, got %v", err)
 	}
 	if err := env.skills.Delete(ctx, other, sk.ID); !errors.Is(err, ErrForbidden) {
@@ -280,6 +280,64 @@ func TestSetStatusAndPermissions(t *testing.T) {
 	}
 	if _, err := env.skills.SetStatus(ctx, admin, sk.ID, "takedown"); err != nil {
 		t.Fatalf("admin takedown: %v", err)
+	}
+}
+
+func TestPublishOfficialAndUpdateMeta(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+
+	// Official=true on publish sets the flag at creation
+	path, pkg := buildPackage(t, "off", "original description")
+	sk, _, err := env.skills.Publish(ctx, PublishInput{
+		Owner: env.owner, Version: "1.0.0", ArchivePath: path, Package: pkg,
+		Official: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sk.Official {
+		t.Fatal("expected official skill")
+	}
+
+	// republish keeps the existing row's flag untouched
+	env.publish(t, "off", "v2 description", "1.1.0", nil)
+	d, err := env.skills.GetDetail(ctx, "raven", "off")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !d.Skill.Official {
+		t.Fatal("official flag lost after republish")
+	}
+
+	// summary + current-version description are editable
+	sum, desc := "new summary", "new description"
+	if err := env.skills.Update(ctx, env.owner, sk.ID, &sum, &desc, nil); err != nil {
+		t.Fatal(err)
+	}
+	d, err = env.skills.GetDetail(ctx, "raven", "off")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Skill.Summary != sum || d.Latest.Description != desc {
+		t.Fatalf("summary=%q description=%q", d.Skill.Summary, d.Latest.Description)
+	}
+	// older version keeps its own description
+	v1, err := env.skills.GetVersion(ctx, sk.ID, "1.0.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v1.Description != "original description" {
+		t.Fatalf("v1 description changed: %q", v1.Description)
+	}
+
+	// nil fields leave everything unchanged; tags still replaceable
+	if err := env.skills.Update(ctx, env.owner, sk.ID, nil, nil, []string{"文档"}); err != nil {
+		t.Fatal(err)
+	}
+	d, _ = env.skills.GetDetail(ctx, "raven", "off")
+	if len(d.Tags) != 1 || d.Tags[0] != "文档" || d.Skill.Summary != sum {
+		t.Fatalf("tags=%v summary=%q", d.Tags, d.Skill.Summary)
 	}
 }
 
