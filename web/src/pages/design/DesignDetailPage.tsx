@@ -9,6 +9,7 @@ import { useTitle } from "../../hooks/useTitle";
 import { PreviewSwitch } from "../../components/PreviewSwitch";
 import type { PreviewMode } from "../../components/PreviewSwitch";
 import { MarkdownView } from "../../components/MarkdownView";
+import { CodeView } from "../../components/CodeView";
 import { formatCount, formatDate, shortSha } from "../../utils/format";
 
 function tabClass({ isActive }: { isActive: boolean }) {
@@ -176,6 +177,7 @@ function PreviewTab({ version }: { version?: DesignVersionMeta }) {
 
 function ContentTab({ ns, name, version }: { ns: string; name: string; version: string }) {
   const [content, setContent] = useState<string | null>(null);
+  const [mdMode, setMdMode] = useState<"preview" | "raw">("preview");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -208,8 +210,28 @@ function ContentTab({ ns, name, version }: { ns: string; name: string; version: 
     );
   }
   return (
-    <div className="panel panel-pad">
-      <MarkdownView markdown={content} />
+    <div className="panel">
+      <div className="file-preview-head">
+        <span className="path">DESIGN.md</span>
+        <span className="preview-switch">
+          <span
+            className={mdMode === "preview" ? "active" : ""}
+            onClick={() => setMdMode("preview")}
+          >
+            预览
+          </span>
+          <span className={mdMode === "raw" ? "active" : ""} onClick={() => setMdMode("raw")}>
+            Raw
+          </span>
+        </span>
+      </div>
+      {mdMode === "preview" ? (
+        <div className="md-view">
+          <MarkdownView markdown={content} />
+        </div>
+      ) : (
+        <CodeView content={content} path="DESIGN.md" />
+      )}
     </div>
   );
 }

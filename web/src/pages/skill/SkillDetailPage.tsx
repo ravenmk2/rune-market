@@ -84,7 +84,6 @@ export function SkillDetailPage() {
           <h1>
             <span className="ns">{ns} /</span> {name} {skill.official && <OfficialBadge />}
           </h1>
-          <p className="detail-sub">{skill.summary}</p>
           <div className="detail-meta-row">
             <span>
               发布者{" "}
@@ -162,32 +161,27 @@ export function SkillDetailPage() {
   );
 }
 
-/* ---------- 概览 tab:说明正文 + 元信息/Harness/权限/环境/标签(原侧栏内容并入) ---------- */
+/* ---------- 概览 tab:README 式左右分栏,左侧说明正文,右侧窄栏元数据 ---------- */
 
 function OverviewTab({ skill, version }: { skill: SkillDetail; version?: VersionMeta }) {
   const desc = version?.description?.trim() ?? "";
-  const summary = skill.summary.trim();
-  // 与头部 summary 重复时跳过正文;description 与 summary 均为空才显示占位文案
-  const showBody = desc !== "" && desc !== summary;
 
   return (
-    <div>
-      {showBody && (
-        <div className="panel panel-pad">
-          {desc.split(/\n{2,}/).map((para, i) => (
+    <div className="overview-layout">
+      <div className="panel panel-pad">
+        <h2>说明</h2>
+        {desc ? (
+          desc.split(/\n{2,}/).map((para, i) => (
             <p key={i} style={{ margin: "10px 0", color: "#3B3A35", whiteSpace: "pre-wrap" }}>
               {para}
             </p>
-          ))}
-        </div>
-      )}
-      {!showBody && !desc && !summary && (
-        <div className="panel panel-pad">
+          ))
+        ) : (
           <p className="muted">作者未提供说明。</p>
-        </div>
-      )}
+        )}
+      </div>
 
-      <div className="overview-grid">
+      <aside>
         <div className="panel panel-pad">
           <h2>信息</h2>
           <div className="meta-list">
@@ -259,18 +253,18 @@ function OverviewTab({ skill, version }: { skill: SkillDetail; version?: Version
             </p>
           </div>
         )}
-      </div>
 
-      {skill.tags.length > 0 && (
-        <div className="panel panel-pad overview-tags">
-          <h2>标签</h2>
-          <div className="stack">
-            {skill.tags.map((t) => (
-              <Tag key={t} label={t} />
-            ))}
+        {skill.tags.length > 0 && (
+          <div className="panel panel-pad">
+            <h2>标签</h2>
+            <div className="stack">
+              {skill.tags.map((t) => (
+                <Tag key={t} label={t} />
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </aside>
     </div>
   );
 }
@@ -421,11 +415,11 @@ function VersionsTab({
       {versions.map((v) => (
         <div className="version-row" key={v.version}>
           <span className="v">{v.version}</span>
-          {v.version === latest && <span className="latest">Latest</span>}
           <span className="date">
             {formatDate(v.created_at)} · <span className="mono">{shortSha(v.sha256)}</span> ·{" "}
             {formatBytes(v.size)}
           </span>
+          {v.version === latest && <span className="latest">Latest</span>}
           <span className="spacer"></span>
           <a className="btn btn-outline btn-sm" href={skillDownloadUrl(ns, name, v.version)}>
             下载

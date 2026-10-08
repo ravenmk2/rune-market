@@ -22,6 +22,8 @@ export function PublishSkillPage() {
   const [validating, setValidating] = useState(false);
   const [validateError, setValidateError] = useState("");
   const [version, setVersion] = useState("0.1.0");
+  const [description, setDescription] = useState("");
+  const [descDirty, setDescDirty] = useState(false);
   const [tags, setTags] = useState("");
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState("");
@@ -33,7 +35,9 @@ export function PublishSkillPage() {
     setError("");
     setValidating(true);
     try {
-      setReport(await skillsApi.validate(f));
+      const r = await skillsApi.validate(f);
+      setReport(r);
+      if (!descDirty) setDescription(r.metadata.description);
     } catch (e) {
       setValidateError(e instanceof ApiError ? e.message : "校验请求失败,请重试");
     } finally {
@@ -62,7 +66,7 @@ export function PublishSkillPage() {
         .split(/[,，]/)
         .map((t) => t.trim())
         .filter(Boolean);
-      const skill = await skillsApi.publish(file, version.trim(), tagList);
+      const skill = await skillsApi.publish(file, version.trim(), tagList, description.trim());
       navigate(`/s/${skill.namespace}/${skill.name}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "发布失败,请稍后重试");
@@ -137,6 +141,24 @@ export function PublishSkillPage() {
                   onChange={(e) => setVersion(e.target.value)}
                 />
                 <div className="hint">语义化版本,重新上传同版本号将覆盖</div>
+              </div>
+
+              <div className="field">
+                <label htmlFor="f-desc">说明</label>
+                <textarea
+                  className="textarea"
+                  id="f-desc"
+                  placeholder="留空则使用包内 SKILL.md 的描述"
+                  value={description}
+                  onChange={(e) => {
+                    setDescription(e.target.value);
+                    setDescDirty(true);
+                  }}
+                />
+                <div className="hint">
+                  校验通过后已自动填入包内描述,可修改;发布后同时作为简介与当前版本说明(≤1024
+                  字符)
+                </div>
               </div>
 
               <div className="field">

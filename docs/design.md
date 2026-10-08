@@ -266,7 +266,7 @@ CREATE TABLE setting (
 - **存储统计**:`SELECT SUM(size) FROM blob` + `avatars/` 目录扫描(头像量小,实时扫描即可)
 - **latest 指针**:发布新版本时更新 `latest_version_id`;下架/删除最新版本后回退到剩余最高 semver
 - **下载计数**:下载接口内 `download_count+1`(允许近似,不做事件表)
-- **setting 键**:`site_name`、`site_description`、`page_size`、`registration_mode`(open/approval/closed,安装后默认 closed)、`artifact_review`(none/required)、`upload_max_mb`、`anonymous_browse`、`anonymous_download`
+- **setting 键**:`site_name`、`site_description`、`site_tagline`(首页标语,≤200,可空)、`page_size`、`registration_mode`(open/approval/closed,安装后默认 closed)、`artifact_review`(none/required)、`upload_max_mb`、`anonymous_browse`、`anonymous_download`
 
 ## 7. 认证、会话与权限
 
@@ -310,7 +310,7 @@ CREATE TABLE setting (
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/site` | 站点名称/描述/版本号(公开,顶栏品牌与页脚读取) |
+| GET | `/site` | 站点名称/描述/首页标语/版本号(公开,顶栏品牌与页脚读取) |
 | GET | `/skills?q=&tag=&official=&sort=&page=` | 列表(卡片所需字段) |
 | GET | `/skills/{ns}/{name}` | 详情(latest 版本元数据 + 统计) |
 | GET | `/skills/{ns}/{name}/versions` | 版本列表 |
@@ -330,7 +330,7 @@ CREATE TABLE setting (
 | --- | --- | --- |
 | POST | `/blobs` | 通用二进制上传:**raw body**,返回 `{sha256, size}`;供预览图等多文件场景预上传 |
 | POST | `/skills/validate` | **raw body = 压缩包**,返回校验报告 JSON(不落库),上传页即时报错 |
-| POST | `/skills?version=&tags=` | 正式发布:**raw body = 压缩包**;同名制品存在 → 新版本(命名空间须为本人) |
+| POST | `/skills?version=&tags=&description=` | 正式发布:**raw body = 压缩包**;同名制品存在 → 新版本(命名空间须为本人);`description` 非空时替代包内 description(同时写入 summary 与当前版本描述,≤1024) |
 | POST | `/designs/validate?name=` | **raw body = .md 文本**,返回弱验证报告 |
 | POST | `/designs?name=&summary=&version=&tags=&preview_desktop=&preview_mobile=` | **raw body = .md 文本**;preview_* 为先前 `POST /blobs` 得到的 sha256(可空) |
 | GET | `/mine/skills` / `/mine/designs` | 我的制品 |

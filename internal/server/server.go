@@ -100,7 +100,7 @@ func requestLogger(logger *logrus.Logger) gin.HandlerFunc {
 			"path":   c.Request.URL.Path,
 			"status": c.Writer.Status(),
 			"ms":     time.Since(start).Milliseconds(),
-		}).Info("request")
+		}).Debug("request")
 	}
 }
 

@@ -154,7 +154,7 @@ export function PublishDesignPage() {
                   className="input mono"
                   id="f-name"
                   type="text"
-                  placeholder="claude-brand"
+                  placeholder="acme-ui"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                 />

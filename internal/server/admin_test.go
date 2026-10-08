@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/ravenmk2/rune-market/internal/auth"
@@ -357,13 +358,13 @@ func TestAdminArtifactsOfficialApprove(t *testing.T) {
 func TestAdminSettings(t *testing.T) {
 	env := newAdminEnv(t)
 
-	// GET returns the 8 contract keys
+	// GET returns the 9 contract keys
 	w := env.do(t, http.MethodGet, "/api/v1/admin/settings", "", env.cookie, nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("get settings: %d", w.Code)
 	}
 	settings := decode(t, w)["settings"].(map[string]any)
-	for _, k := range []string{"site_name", "site_description", "page_size",
+	for _, k := range []string{"site_name", "site_description", "site_tagline", "page_size",
 		"registration_mode", "artifact_review", "upload_max_mb",
 		"anonymous_browse", "anonymous_download"} {
 		if _, ok := settings[k]; !ok {
@@ -373,14 +374,15 @@ func TestAdminSettings(t *testing.T) {
 
 	// partial update
 	w = env.do(t, http.MethodPut, "/api/v1/admin/settings",
-		`{"settings":{"site_name":"RuneMarket 内网版","registration_mode":"closed","page_size":"50"}}`,
+		`{"settings":{"site_name":"RuneMarket 内网版","registration_mode":"closed","page_size":"50","site_tagline":"团队内部的制品市场"}}`,
 		env.cookie, nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("put settings: %d %s", w.Code, w.Body)
 	}
 	settings = decode(t, w)["settings"].(map[string]any)
 	if settings["site_name"] != "RuneMarket 内网版" ||
-		settings["registration_mode"] != "closed" || settings["page_size"] != "50" {
+		settings["registration_mode"] != "closed" || settings["page_size"] != "50" ||
+		settings["site_tagline"] != "团队内部的制品市场" {
 		t.Fatalf("after put: %v", settings)
 	}
 	// untouched key preserved
@@ -396,6 +398,7 @@ func TestAdminSettings(t *testing.T) {
 		`{"settings":{"upload_max_mb":"abc"}}`,
 		`{"settings":{"anonymous_browse":"yes"}}`,
 		`{"settings":{"unknown_key":"x"}}`,
+		`{"settings":{"site_tagline":"` + strings.Repeat("长", 201) + `"}}`,
 	} {
 		w = env.do(t, http.MethodPut, "/api/v1/admin/settings", body, env.cookie, nil)
 		if w.Code != http.StatusBadRequest {
@@ -426,10 +429,14 @@ func TestAdminSettings(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("site endpoint: %d", w.Code)
 	}
-	if got := decode(t, w)["site_name"]; got != "标量版" {
+	site := decode(t, w)
+	if got := site["site_name"]; got != "标量版" {
 		t.Fatalf("site_name: %v", got)
 	}
-	if got := decode(t, w)["version"]; got != "test-version" {
+	if got := site["site_tagline"]; got != "团队内部的制品市场" {
+		t.Fatalf("site_tagline: %v", got)
+	}
+	if got := site["version"]; got != "test-version" {
 		t.Fatalf("version: %v", got)
 	}
 	// non-scalar values are rejected

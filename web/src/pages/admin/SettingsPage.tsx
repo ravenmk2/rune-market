@@ -20,6 +20,7 @@ export function SettingsPage() {
   const [loaded, setLoaded] = useState(false);
   const [siteName, setSiteName] = useState("");
   const [siteDescription, setSiteDescription] = useState("");
+  const [siteTagline, setSiteTagline] = useState("");
   const [pageSize, setPageSize] = useState("20");
   const [regMode, setRegMode] = useState<RegMode>("open");
   const [uploadMaxMb, setUploadMaxMb] = useState("20");
@@ -38,6 +39,7 @@ export function SettingsPage() {
         if (cancelled) return;
         setSiteName(s.site_name ?? "");
         setSiteDescription(s.site_description ?? "");
+        setSiteTagline(s.site_tagline ?? "");
         setPageSize(String(s.page_size ?? 20));
         setRegMode(
           s.registration_mode === "approval" || s.registration_mode === "closed"
@@ -74,6 +76,7 @@ export function SettingsPage() {
       const patch: Settings = {
         site_name: siteName.trim(),
         site_description: siteDescription.trim(),
+        site_tagline: siteTagline.trim(),
         page_size: pageSizeNum,
         registration_mode: regMode,
         upload_max_mb: uploadMaxNum,
@@ -142,6 +145,17 @@ export function SettingsPage() {
               type="text"
               value={siteDescription}
               onChange={(e) => setSiteDescription(e.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="f-sitetagline">首页标语</label>
+            <input
+              className="input"
+              id="f-sitetagline"
+              type="text"
+              placeholder="留空则市场首页不显示标语"
+              value={siteTagline}
+              onChange={(e) => setSiteTagline(e.target.value)}
             />
           </div>
           <div className="field" style={{ marginBottom: 0 }}>

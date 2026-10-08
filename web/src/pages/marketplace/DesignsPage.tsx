@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { designsApi } from "../../api/designs";
 import type { DesignListItem } from "../../api/designs";
+import { siteApi } from "../../api/site";
 import type { ListResult } from "../../api/client";
 import { ApiError } from "../../api/client";
 import { DesignCard } from "../../components/DesignCard";
@@ -17,6 +18,18 @@ export function DesignsPage() {
   const [data, setData] = useState<ListResult<DesignListItem> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [tagline, setTagline] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    siteApi
+      .info()
+      .then((s) => !cancelled && setTagline(s.site_tagline ?? ""))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -55,7 +68,7 @@ export function DesignsPage() {
         <h1>
           智能体<em>技能</em>与<em>设计系统</em>市场
         </h1>
-        <p>为智能体寻找技能,为产品定义风格。</p>
+        {tagline && <p>{tagline}</p>}
         <form className="searchbar" onSubmit={search}>
           <span>⌕</span>
           <input

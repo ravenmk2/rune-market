@@ -104,10 +104,14 @@ export const skillsApi = {
 
   /** 校验:raw body = 压缩包,不落库(§9) */
   validate: (pkg: Blob) => api.postRaw<ValidateReport>("/skills/validate", pkg),
-  /** 发布:raw body = 压缩包,元数据走 query(version、逗号分隔 tags) */
-  publish: (pkg: Blob, version: string, tags: string[]) =>
+  /** 发布:raw body = 压缩包,元数据走 query(version、逗号分隔 tags、可选 description 覆盖包内说明) */
+  publish: (pkg: Blob, version: string, tags: string[], description?: string) =>
     api
-      .postRaw<{ skill: SkillDetail }>("/skills", pkg, { version, tags: tags.join(",") })
+      .postRaw<{ skill: SkillDetail }>("/skills", pkg, {
+        version,
+        tags: tags.join(","),
+        description: description || undefined,
+      })
       .then((r) => r.skill),
 
   mine: () => api.get<ListResult<MySkillItem>>("/mine/skills"),

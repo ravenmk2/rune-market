@@ -567,7 +567,7 @@ func (h *AdminHandler) approveDesign(c *gin.Context) {
 
 // settingKeys is the §6.3 key set exposed to admins, in stable order.
 var settingKeys = []string{
-	"site_name", "site_description", "page_size", "registration_mode",
+	"site_name", "site_description", "site_tagline", "page_size", "registration_mode",
 	"artifact_review", "upload_max_mb", "anonymous_browse", "anonymous_download",
 }
 
@@ -598,6 +598,10 @@ func validateSetting(key, value string) string {
 	case "site_description":
 		if utf8.RuneCountInString(value) > 256 {
 			return "site_description must be at most 256 characters"
+		}
+	case "site_tagline":
+		if utf8.RuneCountInString(value) > 200 {
+			return "site_tagline must be at most 200 characters"
 		}
 	case "page_size":
 		if n, err := strconv.Atoi(value); err != nil || n < 1 || n > 100 {

@@ -4,6 +4,7 @@ import { api } from "./client";
 export interface SiteInfo {
   site_name: string;
   site_description: string;
+  site_tagline: string;
   version: string;
 }
 

@@ -419,6 +419,7 @@ func (h *SkillsHandler) publish(c *gin.Context) {
 		Owner:          user,
 		Version:        version,
 		Tags:           tags,
+		Description:    c.Query("description"),
 		ArchivePath:    path,
 		Package:        pkg,
 		ReviewRequired: h.getStr(ctx, "artifact_review", "none") == "required",

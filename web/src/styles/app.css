@@ -480,21 +480,14 @@ h1, h2, h3 { font-weight: 600; }
   padding-bottom: 60px;
 }
 
-/* Skill 详情页"概览"tab:信息/Harness/权限/环境两列网格,标签垫底 */
+/* Skill 详情页"概览"tab:README 式左右分栏,左侧说明正文,右侧窄栏元数据 */
 
-.overview-grid {
+.overview-layout {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 18px;
+  grid-template-columns: 1fr 300px;
+  gap: 20px;
   align-items: start;
-  margin-top: 18px;
 }
-
-.overview-grid .panel + .panel { margin-top: 0; }
-
-.overview-grid:first-child { margin-top: 0; }
-
-.overview-tags { margin-top: 18px; }
 
 .panel {
   background: var(--surface);
@@ -729,7 +722,11 @@ h1, h2, h3 { font-weight: 600; }
 .md h3 { font-size: 16px; margin: 20px 0 8px; }
 .md p { margin: 10px 0; color: #3B3A35; }
 .md ul { margin: 10px 0 10px 22px; color: #3B3A35; }
+.md ol { margin: 10px 0 10px 22px; color: #3B3A35; }
 .md li { margin: 5px 0; }
+.md table { border-collapse: collapse; margin: 14px 0; font-size: 13.5px; }
+.md th, .md td { border: 1px solid var(--line); padding: 8px 14px; text-align: left; }
+.md th { background: var(--sand); font-weight: 600; }
 .md code { font-family: var(--mono); font-size: 0.88em; background: var(--sand); padding: 2px 6px; border-radius: 5px; }
 .md pre { background: var(--sand); color: #3B3A35; border-radius: var(--radius-sm); padding: 16px 18px; overflow: auto; margin: 14px 0; font-size: 13px; }
 .md pre code { background: none; color: inherit; padding: 0; }
@@ -1326,7 +1323,7 @@ h1, h2, h3 { font-weight: 600; }
 @media (max-width: 960px) {
   .grid { grid-template-columns: repeat(2, 1fr); }
   .layout-detail { grid-template-columns: 1fr; }
-  .overview-grid { grid-template-columns: 1fr; }
+  .overview-layout { grid-template-columns: 1fr; }
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
   .admin-shell { grid-template-columns: 1fr; }
   .admin-side { display: flex; gap: 4px; overflow-x: auto; padding: 12px; }

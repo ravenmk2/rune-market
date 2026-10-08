@@ -30,6 +30,7 @@ const (
 var defaultSettings = map[string]string{
 	"site_name":          "RuneMarket",
 	"site_description":   "",
+	"site_tagline":       "",
 	"page_size":          "20",
 	"registration_mode":  "closed",
 	"artifact_review":    "none",

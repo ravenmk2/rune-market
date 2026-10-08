@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ravenmk2/rune-market/internal/blob"
@@ -338,6 +339,48 @@ func TestPublishOfficialAndUpdateMeta(t *testing.T) {
 	d, _ = env.skills.GetDetail(ctx, "raven", "off")
 	if len(d.Tags) != 1 || d.Tags[0] != "文档" || d.Skill.Summary != sum {
 		t.Fatalf("tags=%v summary=%q", d.Tags, d.Skill.Summary)
+	}
+}
+
+func TestPublishDescriptionOverride(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+
+	// form description replaces the package meta description for both the
+	// skill summary and the published version
+	path, pkg := buildPackage(t, "ovr", "package description")
+	sk, v, err := env.skills.Publish(ctx, PublishInput{
+		Owner: env.owner, Version: "1.0.0", ArchivePath: path, Package: pkg,
+		Description: "  表单说明覆盖  ",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sk.Summary != "表单说明覆盖" || v.Description != "表单说明覆盖" {
+		t.Fatalf("override: summary=%q description=%q", sk.Summary, v.Description)
+	}
+
+	// empty / whitespace-only description keeps the package meta description
+	path, pkg = buildPackage(t, "keep", "package description")
+	sk, v, err = env.skills.Publish(ctx, PublishInput{
+		Owner: env.owner, Version: "1.0.0", ArchivePath: path, Package: pkg,
+		Description: "   ",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sk.Summary != "package description" || v.Description != "package description" {
+		t.Fatalf("fallback: summary=%q description=%q", sk.Summary, v.Description)
+	}
+
+	// over-length override rejected (1024 rune limit, same as update)
+	path, pkg = buildPackage(t, "toolong", "d")
+	_, _, err = env.skills.Publish(ctx, PublishInput{
+		Owner: env.owner, Version: "1.0.0", ArchivePath: path, Package: pkg,
+		Description: strings.Repeat("长", 1025),
+	})
+	if !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("expected invalid input, got %v", err)
 	}
 }
 

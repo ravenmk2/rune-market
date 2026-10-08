@@ -52,6 +52,7 @@ export type AdminDesignItem = DesignListItem;
 export interface Settings {
   site_name?: string;
   site_description?: string;
+  site_tagline?: string;
   page_size?: number;
   registration_mode?: "open" | "approval" | "closed";
   artifact_review?: "none" | "required";

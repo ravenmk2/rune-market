@@ -22,8 +22,8 @@ export function formatCount(n: number): string {
 /** sha256 截断:a3f9…c21e */
 export function shortSha(sha?: string): string {
   if (!sha) return "-";
-  if (sha.length <= 12) return sha;
-  return `${sha.slice(0, 4)}…${sha.slice(-4)}`;
+  if (sha.length <= 18) return sha;
+  return `${sha.slice(0, 7)}…${sha.slice(-7)}`;
 }
 
 const HARNESS_LABELS: Record<string, string> = {

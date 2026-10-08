@@ -71,6 +71,7 @@ type PublishInput struct {
 	Owner          *store.User
 	Version        string   // semver, no v prefix, from the form
 	Tags           []string // full replacement tag set
+	Description    string   // optional override for the package meta description
 	ArchivePath    string   // inspected temp file on disk
 	Package        *skillpkg.Package
 	ReviewRequired bool // artifact_review=required
@@ -96,6 +97,16 @@ func (s *Skills) Publish(ctx context.Context, in PublishInput) (*store.Skill, *s
 	author := meta.Author
 	if author == "" {
 		author = in.Owner.Nickname // §9.5: publisher nickname fallback
+	}
+
+	// a non-empty form description replaces the package meta description;
+	// it feeds both skill.summary and this version's description (§8.4)
+	description := meta.Description
+	if d := strings.TrimSpace(in.Description); d != "" {
+		if utf8.RuneCountInString(d) > 1024 {
+			return nil, nil, fmt.Errorf("%w: description must be at most 1024 characters", ErrInvalidInput)
+		}
+		description = d
 	}
 
 	harnesses, err := jsonArray(meta.Harnesses)
@@ -156,7 +167,7 @@ func (s *Skills) Publish(ctx context.Context, in PublishInput) (*store.Skill, *s
 
 	v := &store.SkillVersion{
 		ID: store.NewID(), SkillID: sk.ID, Version: in.Version,
-		Description: meta.Description, License: meta.License,
+		Description: description, License: meta.License,
 		Compatibility: meta.Compatibility, Author: author,
 		Harnesses: harnesses, Permissions: permissions,
 		Frontmatter: pkg.Frontmatter,
@@ -171,7 +182,7 @@ func (s *Skills) Publish(ctx context.Context, in PublishInput) (*store.Skill, *s
 		}
 		return nil, nil, err
 	}
-	if err := skills.UpdateAfterPublish(ctx, sk.ID, v.ID, meta.Description, now); err != nil {
+	if err := skills.UpdateAfterPublish(ctx, sk.ID, v.ID, description, now); err != nil {
 		return nil, nil, err
 	}
 	if err := tags.SetSkillTags(ctx, sk.ID, in.Tags); err != nil {
@@ -180,7 +191,7 @@ func (s *Skills) Publish(ctx context.Context, in PublishInput) (*store.Skill, *s
 	if err := tx.Commit(); err != nil {
 		return nil, nil, err
 	}
-	sk.Summary = meta.Description
+	sk.Summary = description
 	sk.LatestVersionID = &v.ID
 	sk.UpdatedAt = now
 	return sk, v, nil
