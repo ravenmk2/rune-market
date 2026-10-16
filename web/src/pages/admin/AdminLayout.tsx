@@ -29,14 +29,14 @@ export function AdminLayout() {
             <span className="brand-mark">ᚱ</span>RuneMarket
           </Link>
           <nav className="nav">
-            <NavLink to="/">市场</NavLink>
+            <NavLink to="/">浏览</NavLink>
             <NavLink to="/admin" className={sideClass}>
               管理面板
             </NavLink>
           </nav>
           <div className="topbar-actions">
             <Link className="btn btn-outline btn-sm" to="/">
-              返回市场
+              返回商店
             </Link>
             <Avatar user={user} />
           </div>

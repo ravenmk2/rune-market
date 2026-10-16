@@ -333,13 +333,15 @@ CREATE TABLE setting (
 | --- | --- | --- |
 | POST | `/images` | 图片上传:**raw body = PNG/JPG**(≤5MB,保留原格式),返回 `{sha256, ext, size, url, thumb_url}`;供预览图与 skill 图标预上传 |
 | POST | `/archives` | skill 压缩包上传:**raw body**(≤`upload_max_mb`),落 blob(内容寻址去重)后 Inspect,返回 `{sha256, size, report, metadata}`;多阶段发布第一步,上传页即时报错 |
-| POST | `/skills` | 正式发布:**JSON** `{archive, version, display_name?, tags?, description?, icon?}`;`archive` 为 `/archives` 所得 sha256(须存在且 kind=archive,服务端重新 Inspect,报告有 error 拒绝);`icon` 为 `/images` 所得 sha256(可空,须 kind=image);同名制品存在 → 新版本;`display_name` 去除首尾空白后≤64 字符,新制品未提供/空值默认包内 name,已有制品未提供/空值保留原展示名称;`description` 非空时替代包内 description(同时写入 summary 与当前版本描述,≤1024) |
+| POST | `/skills` | 正式发布:**JSON** `{archive, version, skill_id?, display_name?, tags?, description?, icon?}`;`archive` 为 `/archives` 所得 sha256(须存在且 kind=archive,服务端重新 Inspect,报告有 error 拒绝);`icon` 为 `/images` 所得 sha256(可空,须 kind=image);同名制品存在 → 新版本;`display_name` 去除首尾空白后≤64 字符,新制品未提供/空值默认包内 name,已有制品未提供/空值保留原展示名称;`description` 非空时替代包内 description(同时写入 summary 与当前版本描述,≤1024) |
 | POST | `/designs/validate` | **JSON** `{name, content}` 干跑,返回弱验证报告(发布页预检) |
 | POST | `/designs` | **JSON** `{content, name, summary?, version, tags?, preview_desktop?, preview_mobile?}`;preview_* 为先前 `POST /images` 得到的 sha256(可空) |
 | GET | `/mine/skills` / `/mine/designs` | 我的制品 |
 | PUT | `/skills/{id}` | 改标签(JSON;skill 还可改 display_name(去除首尾空白后 1–64 字符)、summary、当前版本 description 与 `icon`——sha256 设置 / `""` 清除 / 缺省不变;designmd 可改 summary) |
 | POST | `/skills/{id}/takedown` `/restore` | 下架/恢复(designmd 对称) |
 | DELETE | `/skills/{id}` / `/designs/{id}` | 删除(级联版本,事务内减 blob 引用,含图标) |
+
+`POST /skills` 的 `skill_id` 可选：指定时只向该技能新增版本，技能必须存在且属于当前用户（管理员也不能代替作者发布），服务端重新 Inspect 后核对包内 `name`；新版本必须按 SemVer 优先级高于该技能全部历史版本，重复版本返回 `409 version_exists`，其他不递增版本返回 `400 invalid_argument`。绑定发布在事务内锁定技能并读取版本（MySQL 使用当前锁定读，避免旧快照），校验失败不改变制品或 blob 引用。展示名称缺省/空值、图标缺省、标签缺省均沿用原值；显式 `tags: []` 清空标签。未传 `skill_id` 保持旧客户端的同名 upsert 与标签替换行为，无新增 API 路由或数据库迁移。
 
 管理员发布的新制品默认 `official=1`(普通用户为 0);事后仍可经管理面板 official/unofficial 端点调整。
 
@@ -437,10 +439,12 @@ web/src/
 └── ...
 ```
 
-- 路由:`/`(Skills)、`/designs`、`/s/{ns}/{name}[/files|/versions]`、`/d/{ns}/{name}[/content]`、`/publish`、`/mine/...`、`/u/{username}`、`/account`、`/setup`、`/admin/...`
+- 路由:`/`(Skills)、`/designs`、`/s/{ns}/{name}[/files|/versions]`、`/d/{ns}/{name}[/content]`、`/publish`、`/publish/skills/{ns}/{name}`(技能新版本)、`/mine/...`、`/u/{username}`、`/account`、`/setup`、`/admin/...`
 - 上传:fetch `body: Blob`(raw),不用 FormData;`api/client.ts` 统一封装:错误格式、`X-Requested-With`、401 跳登录
 - 技能展示:列表、我的发布、后台列表、详情均以 `display_name` 为主,同时展示原 `name`(地址、唯一性、下载文件名仍使用原名称);搜索覆盖展示名称、原名称与简介。发布页必填展示名称,上传校验完成后默认填入包内 `name`,用户已编辑时保留输入;编辑页可修改展示名称。迁移为历史技能回填 `display_name = name`。列表/详情 API 返回 `display_name`。
 - 技能列表:市场、用户主页及管理列表均不展示技能简介/说明;详情页保留版本说明,简介仍存储并参与搜索。
+- 新版本发布：我的发布与作者自己的详情页提供“发布新版本”入口；显示目标展示名称、原名称和最高语义版本，默认建议补丁号 +1，最高为预发布时建议对应正式版本，并提供次版本/主版本建议及手动 SemVer 输入（含预发布与构建信息）。展示名称、图标、标签预填并折叠，说明从新包提取；包名不匹配阻止提交。普通发布页检查同命名空间下是否已有该技能，存在则引导使用新版本入口，查询失败不视为新技能。
+- 商店文案：Skills 与 DESIGN.md 首页标题为“智能体技能与设计系统商店”，顶部导航与详情面包屑使用“浏览”，后台返回按钮为“返回商店”，相关提示同步。卡片下载量使用共用 `DownloadCount` SVG 图标与缩写数字，悬停/无障碍标签显示完整下载次数。
 - 技能默认图标:未上传自定义图片时,技能卡片、详情、发布和编辑表单统一使用暖橙色“文档 + 星芒”SVG(`SkillIcon`),不使用名称首字母或轮换底色。
 - 头像组件:`has_avatar` 为真输出 `/avatars/{id}_{size}.png?v={updated_at}`,否则字母占位
 - 鉴权态:`GET /auth/me` 全局 Context;admin 路由前端守卫 + 后端强制

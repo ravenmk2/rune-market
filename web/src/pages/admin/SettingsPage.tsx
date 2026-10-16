@@ -153,7 +153,7 @@ export function SettingsPage() {
               className="input"
               id="f-sitetagline"
               type="text"
-              placeholder="留空则市场首页不显示标语"
+              placeholder="留空则商店首页不显示标语"
               value={siteTagline}
               onChange={(e) => setSiteTagline(e.target.value)}
             />

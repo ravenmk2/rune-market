@@ -2,7 +2,8 @@ import { Link, useNavigate } from "react-router-dom";
 import type { SkillListItem } from "../api/skills";
 import { OfficialBadge } from "./Badge";
 import { Tag } from "./Tag";
-import { formatCount, harnessLabel } from "../utils/format";
+import { harnessLabel } from "../utils/format";
+import { DownloadCount } from "./DownloadCount";
 import { SkillIcon } from "./SkillIcon";
 
 export function SkillCard({ skill }: { skill: SkillListItem }) {
@@ -46,7 +47,7 @@ export function SkillCard({ skill }: { skill: SkillListItem }) {
       <div className="card-foot">
         <span>{harnessText}</span>
         <span className="spacer"></span>
-        <span>↓ {formatCount(skill.download_count)}</span>
+        <DownloadCount count={skill.download_count} />
       </div>
     </Link>
   );

@@ -63,6 +63,16 @@ func (s *SkillStore) GetByID(ctx context.Context, id string) (*Skill, error) {
 		`SELECT `+skillColumns+` FROM skill WHERE id = ?`, id))
 }
 
+// GetByIDForUpdate serializes publishers of a bound skill in MySQL.
+// SQLite already holds its write lock from the archive binding in Publish.
+func (s *SkillStore) GetByIDForUpdate(ctx context.Context, id, dialect string) (*Skill, error) {
+	query := `SELECT ` + skillColumns + ` FROM skill WHERE id = ?`
+	if dialect == DialectMySQL {
+		query += ` FOR UPDATE`
+	}
+	return scanSkill(s.db.QueryRowContext(ctx, query, id))
+}
+
 func (s *SkillStore) GetByOwnerName(ctx context.Context, ownerID, name string) (*Skill, error) {
 	return scanSkill(s.db.QueryRowContext(ctx,
 		`SELECT `+skillColumns+` FROM skill WHERE owner_id = ? AND name = ?`, ownerID, name))

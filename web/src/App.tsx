@@ -83,6 +83,7 @@ export default function App() {
             <Route path="/s/:ns/:name/*" element={<SkillDetailPage />} />
             <Route path="/d/:ns/:name/*" element={<DesignDetailPage />} />
             <Route path="/publish" element={<PublishSkillPage />} />
+            <Route path="/publish/skills/:ns/:name" element={<PublishSkillPage />} />
             <Route path="/publish/design" element={<PublishDesignPage />} />
             <Route path="/mine/skills" element={<MySkillsPage />} />
             <Route path="/mine/skills/:id/edit" element={<EditSkillPage />} />

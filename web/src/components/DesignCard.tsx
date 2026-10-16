@@ -1,7 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import type { DesignListItem } from "../api/designs";
 import { OfficialBadge } from "./Badge";
-import { formatCount } from "../utils/format";
+import { DownloadCount } from "./DownloadCount";
 
 export function DesignCard({ design }: { design: DesignListItem }) {
   const navigate = useNavigate();
@@ -38,7 +38,7 @@ export function DesignCard({ design }: { design: DesignListItem }) {
       <div className="card-foot">
         <span>{design.tags.length > 0 ? design.tags.join(" · ") : "设计系统"}</span>
         <span className="spacer"></span>
-        <span>↓ {formatCount(design.download_count)}</span>
+        <DownloadCount count={design.download_count} />
       </div>
     </Link>
   );

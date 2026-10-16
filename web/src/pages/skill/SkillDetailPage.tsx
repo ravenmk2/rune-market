@@ -11,6 +11,8 @@ import { PermList } from "../../components/PermList";
 import { FileTree } from "../../components/FileTree";
 import { CodeView } from "../../components/CodeView";
 import { MarkdownView } from "../../components/MarkdownView";
+import { useAuth } from "../../context/AuthContext";
+import { skillPublishVersionPath } from "../../utils/paths";
 import { useTitle } from "../../hooks/useTitle";
 import { formatBytes, formatCount, formatDate, shortSha } from "../../utils/format";
 
@@ -20,6 +22,7 @@ function tabClass({ isActive }: { isActive: boolean }) {
 
 export function SkillDetailPage() {
   const { ns = "", name = "" } = useParams();
+  const { user } = useAuth();
   const [skill, setSkill] = useState<SkillDetail | null>(null);
   const [versions, setVersions] = useState<VersionMeta[]>([]);
   const [selectedVer, setSelectedVer] = useState("");
@@ -76,7 +79,7 @@ export function SkillDetailPage() {
   return (
     <main className="container">
       <div className="crumbs">
-        <Link to="/">市场</Link> / <Link to="/">Skills</Link> / {name}
+        <Link to="/">浏览</Link> / <Link to="/">Skills</Link> / {name}
       </div>
 
       <section className="detail-head">
@@ -109,6 +112,9 @@ export function SkillDetailPage() {
           </div>
         </div>
         <div className="detail-actions">
+          {user?.username === skill.owner.username && (
+            <Link className="btn btn-outline" to={skillPublishVersionPath(ns, name)}>发布新版本</Link>
+          )}
           <select
             className="select"
             style={{ width: "auto" }}

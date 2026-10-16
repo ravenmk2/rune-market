@@ -78,9 +78,22 @@ func (s *SkillVersionStore) GetBySkillVersion(ctx context.Context, skillID, vers
 
 // ListBySkill returns versions newest first (by creation time).
 func (s *SkillVersionStore) ListBySkill(ctx context.Context, skillID string) ([]*SkillVersion, error) {
+	return s.listBySkill(ctx, skillID, false)
+}
+
+// Locking reads use the current committed rows in MySQL, even if an earlier
+// archive lookup established a REPEATABLE READ snapshot in this transaction.
+func (s *SkillVersionStore) ListBySkillForUpdate(ctx context.Context, skillID, dialect string) ([]*SkillVersion, error) {
+	return s.listBySkill(ctx, skillID, dialect == DialectMySQL)
+}
+
+func (s *SkillVersionStore) listBySkill(ctx context.Context, skillID string, lock bool) ([]*SkillVersion, error) {
+	query := `SELECT ` + skillVersionColumns + ` FROM skill_version WHERE skill_id = ? ORDER BY created_at DESC`
+	if lock {
+		query += ` FOR UPDATE`
+	}
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT `+skillVersionColumns+` FROM skill_version WHERE skill_id = ? ORDER BY created_at DESC`,
-		skillID)
+		query, skillID)
 	if err != nil {
 		return nil, err
 	}

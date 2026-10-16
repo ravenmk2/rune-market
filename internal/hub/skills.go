@@ -73,6 +73,7 @@ func (s *Skills) DB() *sql.DB { return s.db }
 // via POST /archives and is referenced by its blob sha256.
 type PublishInput struct {
 	Owner          *store.User
+	SkillID        string   // optional: bind a new version to an existing owned skill
 	Version        string   // semver, no v prefix, from the form
 	Tags           []string // full replacement tag set
 	Description    string   // optional override for the package meta description
@@ -172,7 +173,21 @@ func (s *Skills) Publish(ctx context.Context, in PublishInput) (*store.Skill, *s
 	tags := store.NewTagStore(tx, s.dialect)
 
 	now := store.Now()
-	sk, err := skills.GetByOwnerName(ctx, in.Owner.ID, meta.Name)
+	var sk *store.Skill
+	if in.SkillID != "" {
+		sk, err = skills.GetByIDForUpdate(ctx, in.SkillID, s.dialect)
+		if err != nil {
+			return nil, nil, err
+		}
+		if sk.OwnerID != in.Owner.ID {
+			return nil, nil, ErrForbidden
+		}
+		if sk.Name != meta.Name {
+			return nil, nil, fmt.Errorf("%w: package name must match the target skill %q", ErrInvalidInput, sk.Name)
+		}
+	} else {
+		sk, err = skills.GetByOwnerName(ctx, in.Owner.ID, meta.Name)
+	}
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		status := store.SkillStatusPublished
@@ -198,6 +213,20 @@ func (s *Skills) Publish(ctx context.Context, in PublishInput) (*store.Skill, *s
 		return nil, nil, ErrVersionExists
 	} else if !errors.Is(err, store.ErrNotFound) {
 		return nil, nil, err
+	}
+	if in.SkillID != "" {
+		existing, err := versions.ListBySkillForUpdate(ctx, sk.ID, s.dialect)
+		if err != nil {
+			return nil, nil, err
+		}
+		for _, previous := range existing {
+			if previous.Version == in.Version {
+				return nil, nil, ErrVersionExists
+			}
+			if semver.Compare("v"+in.Version, "v"+previous.Version) <= 0 {
+				return nil, nil, fmt.Errorf("%w: version must be higher than all existing versions", ErrInvalidInput)
+			}
+		}
 	}
 
 	v := &store.SkillVersion{
@@ -226,8 +255,12 @@ func (s *Skills) Publish(ctx context.Context, in PublishInput) (*store.Skill, *s
 	if err := skills.UpdateAfterPublish(ctx, sk.ID, v.ID, description, now); err != nil {
 		return nil, nil, err
 	}
-	if err := tags.SetSkillTags(ctx, sk.ID, in.Tags); err != nil {
-		return nil, nil, err
+	// Bound-version clients may omit tags to preserve the current set;
+	// an explicit [] clears it. Unbound requests retain their original behavior.
+	if in.SkillID == "" || in.Tags != nil {
+		if err := tags.SetSkillTags(ctx, sk.ID, in.Tags); err != nil {
+			return nil, nil, err
+		}
 	}
 	// publishing with an icon over an existing skill swaps the icon reference
 	// (a freshly created row already carries iconSHA)

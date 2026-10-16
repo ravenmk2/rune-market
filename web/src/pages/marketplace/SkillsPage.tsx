@@ -56,7 +56,7 @@ export function SkillsPage() {
     <main className="container">
       <section className="hero">
         <h1>
-          智能体<em>技能</em>与<em>设计系统</em>市场
+          智能体<em>技能</em>与<em>设计系统</em>商店
         </h1>
         {tagline && <p>{tagline}</p>}
         <form className="searchbar" onSubmit={search}>

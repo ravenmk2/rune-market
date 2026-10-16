@@ -5,6 +5,7 @@ import type { MySkillItem } from "../../api/skills";
 import { ApiError } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import { OfficialBadge } from "../../components/Badge";
+import { skillPublishVersionPath } from "../../utils/paths";
 import { formatCount, formatDate } from "../../utils/format";
 
 function statusView(status: string): { cls: string; label: string } {
@@ -144,8 +145,8 @@ export function MySkillsPage() {
                     <td>{formatCount(s.download_count)}</td>
                     <td className="muted">{formatDate(s.updated_at)}</td>
                     <td style={{ whiteSpace: "nowrap" }}>
-                      <Link className="btn btn-outline btn-sm" to="/publish">
-                        新版
+                      <Link className="btn btn-outline btn-sm" to={skillPublishVersionPath(s.namespace, s.name)}>
+                        发布新版本
                       </Link>{" "}
                       <Link className="btn btn-outline btn-sm" to={`/mine/skills/${s.id}/edit`}>
                         编辑

@@ -71,7 +71,7 @@ export function DesignDetailPage() {
   return (
     <main className="container">
       <div className="crumbs">
-        <Link to="/">市场</Link> / <Link to="/designs">DESIGN.md</Link> / {name}
+        <Link to="/">浏览</Link> / <Link to="/designs">DESIGN.md</Link> / {name}
       </div>
 
       <section className="detail-head">

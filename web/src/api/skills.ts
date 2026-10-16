@@ -50,6 +50,7 @@ export interface VersionMeta {
 }
 
 export interface SkillDetail extends SkillListItem {
+  id: string;
   latest: VersionMeta;
 }
 
@@ -108,6 +109,7 @@ export interface ArchiveUpload {
 }
 
 export interface PublishSkillInput {
+  skill_id?: string;
   display_name: string;
   /** POST /archives 预上传得到的 sha256 */
   archive: string;
@@ -137,9 +139,10 @@ export const skillsApi = {
     api
       .post<{ skill: SkillDetail }>("/skills", {
         archive: input.archive,
+        skill_id: input.skill_id,
         display_name: input.display_name,
         version: input.version,
-        tags: input.tags && input.tags.length > 0 ? input.tags : undefined,
+        tags: input.tags,
         description: input.description || undefined,
         icon: input.icon || undefined,
       })

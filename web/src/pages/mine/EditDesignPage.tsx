@@ -202,7 +202,7 @@ export function EditDesignPage() {
             <div>
               <div className="dr-title">{takenDown ? "恢复制品" : "下架制品"}</div>
               <div className="dr-desc">
-                {takenDown ? "恢复后重新在市场展示" : "下架后不在市场展示,已下载用户不受影响"}
+                {takenDown ? "恢复后重新在商店展示" : "下架后不在商店展示,已下载用户不受影响"}
               </div>
             </div>
             <button

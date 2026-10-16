@@ -417,6 +417,7 @@ func (h *SkillsHandler) uploadArchive(c *gin.Context) {
 }
 
 type publishSkillRequest struct {
+	SkillID     string   `json:"skill_id"`
 	DisplayName string   `json:"display_name"`
 	Archive     string   `json:"archive"`
 	Version     string   `json:"version"`
@@ -450,6 +451,7 @@ func (h *SkillsHandler) publish(c *gin.Context) {
 	user := auth.CurrentUser(c)
 	sk, _, err := h.hub.Publish(ctx, hub.PublishInput{
 		Owner:          user,
+		SkillID:        req.SkillID,
 		Version:        req.Version,
 		Tags:           req.Tags,
 		Description:    req.Description,
@@ -460,6 +462,12 @@ func (h *SkillsHandler) publish(c *gin.Context) {
 		Official:       user.Role == store.RoleAdmin,
 	})
 	switch {
+	case errors.Is(err, hub.ErrNotFound):
+		auth.Error(c, http.StatusNotFound, "not_found", "target skill not found")
+		return
+	case errors.Is(err, hub.ErrForbidden):
+		auth.Error(c, http.StatusForbidden, "forbidden", "only the skill owner can publish a new version")
+		return
 	case errors.Is(err, hub.ErrVersionExists):
 		auth.Error(c, http.StatusConflict, "version_exists", "version already published")
 		return

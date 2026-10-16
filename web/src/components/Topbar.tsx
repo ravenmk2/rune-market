@@ -20,7 +20,7 @@ export function Topbar() {
         </Link>
         <nav className="nav">
           <NavLink to="/" end className={navClass}>
-            市场
+            浏览
           </NavLink>
           <NavLink to="/publish" className={navClass}>
             发布
