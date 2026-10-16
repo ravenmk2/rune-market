@@ -53,10 +53,17 @@ type DesignPublishInput struct {
 	Version        string
 	Tags           []string
 	Content        []byte // DESIGN.md text (raw body)
-	PreviewDesktop string // sha256 from POST /blobs, optional
-	PreviewMobile  string // sha256 from POST /blobs, optional
+	PreviewDesktop string // legacy default desktop sha256 from POST /images
+	PreviewMobile  string // legacy default mobile sha256 from POST /images
+	Previews       []DesignPreviewInput
 	ReviewRequired bool
 	Official       bool // admin publishes default to official (§8.4)
+}
+
+type DesignPreviewInput struct {
+	Theme  string `json:"theme"`
+	Device string `json:"device"`
+	SHA256 string `json:"sha256"`
 }
 
 // Publish runs the §10.3 write path in a single transaction: preview blob
@@ -82,6 +89,32 @@ func (s *Designs) Publish(ctx context.Context, in DesignPublishInput) (*store.De
 	}
 	sum := sha256.Sum256(in.Content)
 	contentSHA := hex.EncodeToString(sum[:])
+	if in.Previews != nil && (in.PreviewDesktop != "" || in.PreviewMobile != "") {
+		return nil, nil, fmt.Errorf("%w: cannot combine previews and legacy preview fields", ErrInvalidInput)
+	}
+	previews := in.Previews
+	if in.PreviewDesktop != "" {
+		previews = append(previews, DesignPreviewInput{"default", "desktop", in.PreviewDesktop})
+	}
+	if in.PreviewMobile != "" {
+		previews = append(previews, DesignPreviewInput{"default", "mobile", in.PreviewMobile})
+	}
+	v := &store.DesignmdVersion{}
+	slots := map[string]**string{
+		"default/desktop": &v.PreviewDesktopSHA256, "default/mobile": &v.PreviewMobileSHA256,
+		"light/desktop": &v.PreviewLightDesktopSHA256, "light/mobile": &v.PreviewLightMobileSHA256,
+		"dark/desktop": &v.PreviewDarkDesktopSHA256, "dark/mobile": &v.PreviewDarkMobileSHA256,
+	}
+	seen := map[string]bool{}
+	for _, p := range previews {
+		key := p.Theme + "/" + p.Device
+		_, valid := slots[key]
+		_, hashErr := hex.DecodeString(p.SHA256)
+		if !valid || seen[key] || len(p.SHA256) != 64 || hashErr != nil || p.SHA256 != strings.ToLower(p.SHA256) {
+			return nil, nil, fmt.Errorf("%w: invalid or duplicate preview slot %q", ErrInvalidInput, key)
+		}
+		seen[key] = true
+	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -94,6 +127,13 @@ func (s *Designs) Publish(ctx context.Context, in DesignPublishInput) (*store.De
 		if sha == "" {
 			return nil, nil
 		}
+		kind, _, err := s.blobs.Stat(ctx, tx, sha)
+		if errors.Is(err, store.ErrNotFound) || (err == nil && kind != blob.KindImage) {
+			return nil, fmt.Errorf("%w: preview must reference an uploaded image", ErrInvalidInput)
+		}
+		if err != nil {
+			return nil, err
+		}
 		if err := s.blobs.AddRef(ctx, tx, sha, blob.KindImage); err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				return nil, fmt.Errorf("%w: preview blob %s not found", ErrInvalidInput, sha)
@@ -102,13 +142,12 @@ func (s *Designs) Publish(ctx context.Context, in DesignPublishInput) (*store.De
 		}
 		return &sha, nil
 	}
-	desktopSHA, err := refPreview(in.PreviewDesktop)
-	if err != nil {
-		return nil, nil, err
-	}
-	mobileSHA, err := refPreview(in.PreviewMobile)
-	if err != nil {
-		return nil, nil, err
+	for _, p := range previews {
+		sha, err := refPreview(p.SHA256)
+		if err != nil {
+			return nil, nil, err
+		}
+		*slots[p.Theme+"/"+p.Device] = sha
 	}
 
 	designs := store.NewDesignmdStore(tx)
@@ -141,12 +180,8 @@ func (s *Designs) Publish(ctx context.Context, in DesignPublishInput) (*store.De
 		return nil, nil, err
 	}
 
-	v := &store.DesignmdVersion{
-		ID: store.NewID(), DesignmdID: d.ID, Version: in.Version,
-		Content: string(in.Content), SHA256: contentSHA,
-		PreviewDesktopSHA256: desktopSHA, PreviewMobileSHA256: mobileSHA,
-		CreatedAt: now,
-	}
+	v.ID, v.DesignmdID, v.Version = store.NewID(), d.ID, in.Version
+	v.Content, v.SHA256, v.CreatedAt = string(in.Content), contentSHA, now
 	if err := versions.Create(ctx, v); err != nil {
 		if store.IsUniqueViolation(err) {
 			return nil, nil, ErrVersionExists
@@ -209,7 +244,7 @@ func (s *Designs) detailBy(ctx context.Context, cond string, args ...any) (*Desi
 		}
 		det.Latest = lv
 		det.LatestVersion = lv.Version
-		det.PreviewDesktopSHA256 = lv.PreviewDesktopSHA256
+		det.PreviewDesktopSHA256 = lv.CoverSHA256()
 	}
 	return det, nil
 }
@@ -264,7 +299,10 @@ func (s *Designs) List(ctx context.Context, f ListFilter) (items []DesignItem, t
 	query := `
 		SELECT d.id, d.owner_id, d.name, d.summary, d.official, d.status,
 		       d.latest_version_id, d.download_count, d.created_at, d.updated_at,
-		       u.username, u.nickname, COALESCE(lv.version, ''), lv.preview_desktop_sha256
+		       u.username, u.nickname, COALESCE(lv.version, ''),
+		       COALESCE(lv.preview_desktop_sha256, lv.preview_light_desktop_sha256,
+		         lv.preview_dark_desktop_sha256, lv.preview_mobile_sha256,
+		         lv.preview_light_mobile_sha256, lv.preview_dark_mobile_sha256)
 		FROM designmd d
 		JOIN user u ON u.id = d.owner_id
 		LEFT JOIN designmd_version lv ON lv.id = d.latest_version_id
@@ -424,11 +462,8 @@ func (s *Designs) Delete(ctx context.Context, actor *store.User, designID string
 		return err
 	}
 	for _, v := range versions {
-		for _, sha := range []*string{v.PreviewDesktopSHA256, v.PreviewMobileSHA256} {
-			if sha == nil {
-				continue
-			}
-			if err := s.blobs.Release(ctx, tx, *sha); err != nil && !errors.Is(err, store.ErrNotFound) {
+		for _, p := range v.Previews() {
+			if err := s.blobs.Release(ctx, tx, *p.SHA256); err != nil && !errors.Is(err, store.ErrNotFound) {
 				return err
 			}
 		}

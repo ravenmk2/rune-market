@@ -11,38 +11,82 @@ import (
 // decision 5); sha256 is the content hash and does not reference blob.
 // Preview sha columns reference blob(sha256) with kind=image.
 type DesignmdVersion struct {
-	ID                   string
-	DesignmdID           string
-	Version              string
-	Content              string
-	SHA256               string
-	PreviewDesktopSHA256 *string
-	PreviewMobileSHA256  *string
-	CreatedAt            time.Time
+	ID                        string
+	DesignmdID                string
+	Version                   string
+	Content                   string
+	SHA256                    string
+	PreviewDesktopSHA256      *string
+	PreviewMobileSHA256       *string
+	PreviewLightDesktopSHA256 *string
+	PreviewLightMobileSHA256  *string
+	PreviewDarkDesktopSHA256  *string
+	PreviewDarkMobileSHA256   *string
+	CreatedAt                 time.Time
 }
 
 type DesignmdVersionStore struct {
 	db DBTX
 }
 
+// DesignPreview identifies an occupied preview slot, independent of style tags.
+type DesignPreview struct {
+	Theme  string
+	Device string
+	SHA256 *string
+}
+
+func (v *DesignmdVersion) Previews() []DesignPreview {
+	slots := []DesignPreview{
+		{"default", "desktop", v.PreviewDesktopSHA256},
+		{"default", "mobile", v.PreviewMobileSHA256},
+		{"light", "desktop", v.PreviewLightDesktopSHA256},
+		{"light", "mobile", v.PreviewLightMobileSHA256},
+		{"dark", "desktop", v.PreviewDarkDesktopSHA256},
+		{"dark", "mobile", v.PreviewDarkMobileSHA256},
+	}
+	out := make([]DesignPreview, 0, len(slots))
+	for _, slot := range slots {
+		if slot.SHA256 != nil && *slot.SHA256 != "" {
+			out = append(out, slot)
+		}
+	}
+	return out
+}
+
+func (v *DesignmdVersion) CoverSHA256() *string {
+	for _, sha := range []*string{v.PreviewDesktopSHA256, v.PreviewLightDesktopSHA256,
+		v.PreviewDarkDesktopSHA256, v.PreviewMobileSHA256,
+		v.PreviewLightMobileSHA256, v.PreviewDarkMobileSHA256} {
+		if sha != nil && *sha != "" {
+			return sha
+		}
+	}
+	return nil
+}
+
 func NewDesignmdVersionStore(db DBTX) *DesignmdVersionStore {
 	return &DesignmdVersionStore{db: db}
 }
 
-const designmdVersionColumns = `id, designmd_id, version, content, sha256, preview_desktop_sha256, preview_mobile_sha256, created_at`
+const designmdVersionColumns = `id, designmd_id, version, content, sha256, preview_desktop_sha256, preview_mobile_sha256, preview_light_desktop_sha256, preview_light_mobile_sha256, preview_dark_desktop_sha256, preview_dark_mobile_sha256, created_at`
 
 func (s *DesignmdVersionStore) Create(ctx context.Context, v *DesignmdVersion) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO designmd_version (`+designmdVersionColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO designmd_version (`+designmdVersionColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		v.ID, v.DesignmdID, v.Version, v.Content, v.SHA256,
-		v.PreviewDesktopSHA256, v.PreviewMobileSHA256, v.CreatedAt)
+		v.PreviewDesktopSHA256, v.PreviewMobileSHA256,
+		v.PreviewLightDesktopSHA256, v.PreviewLightMobileSHA256,
+		v.PreviewDarkDesktopSHA256, v.PreviewDarkMobileSHA256, v.CreatedAt)
 	return err
 }
 
 func scanDesignmdVersion(row interface{ Scan(...any) error }) (*DesignmdVersion, error) {
 	var v DesignmdVersion
 	err := row.Scan(&v.ID, &v.DesignmdID, &v.Version, &v.Content, &v.SHA256,
-		&v.PreviewDesktopSHA256, &v.PreviewMobileSHA256, &v.CreatedAt)
+		&v.PreviewDesktopSHA256, &v.PreviewMobileSHA256,
+		&v.PreviewLightDesktopSHA256, &v.PreviewLightMobileSHA256,
+		&v.PreviewDarkDesktopSHA256, &v.PreviewDarkMobileSHA256, &v.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}

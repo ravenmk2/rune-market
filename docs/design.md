@@ -236,6 +236,10 @@ CREATE TABLE designmd_version (
   sha256                 CHAR(64)    NOT NULL,   -- 内容哈希(完整性/展示),不关联 blob
   preview_desktop_sha256 CHAR(64)    REFERENCES blob(sha256),
   preview_mobile_sha256  CHAR(64)    REFERENCES blob(sha256),
+  preview_light_desktop_sha256 CHAR(64) REFERENCES blob(sha256),
+  preview_light_mobile_sha256  CHAR(64) REFERENCES blob(sha256),
+  preview_dark_desktop_sha256  CHAR(64) REFERENCES blob(sha256),
+  preview_dark_mobile_sha256   CHAR(64) REFERENCES blob(sha256),
   created_at             TIMESTAMP   NOT NULL,
   UNIQUE (designmd_id, version)
 );
@@ -390,10 +394,13 @@ CREATE TABLE setting (
 
 ## 10. DESIGN.md 发布与校验管线
 
-1. 发布与预检均为 **JSON**:`POST /designs` 收 `{content, name, summary?, version, tags?, preview_desktop?, preview_mobile?}`,`POST /designs/validate` 收 `{name, content}` 干跑;content ≤1MB;name(必填,同 name 规则,命名空间下唯一)、version(semver)、summary、tags;预览图两张预先 `POST /images` 各换取 sha256(各 ≤5MB,PNG/JPG,保留原格式)
+1. 发布与预检均为 **JSON**:`POST /designs` 收 `{content, name, summary?, version, tags?, previews?}`,`POST /designs/validate` 收 `{name, content}` 干跑;content ≤1MB;name(必填,同 name 规则,命名空间下唯一)、version(semver)、summary、tags。`previews` 为 `{theme, device, sha256}` 数组,`theme=default|light|dark`(默认/浅色/深色),`device=desktop|mobile`,每个组合最多一张,共最多六张,均可选。图片预先 `POST /images` 换取 sha256(各 ≤5MB,PNG/JPG,保留原格式)。未知枚举、重复组合、非法哈希或非 image blob 拒绝发布。兼容旧 `preview_desktop`/`preview_mobile` 请求并映射默认组,非空旧字段不能与 `previews` 同时提交。
 2. **弱验证(警告不拦截)**:Markdown 可解析;检测常见章节(Overview/Colors/Typography/Spacing/Components/Elevation/Guidelines),缺失给建议;Colors 章节尝试提取 hex 色值计数(用于校验报告"识别出 N 个颜色定义")
 3. `content` 与 `sha256` 直接写 `designmd_version`;预览图 blob 引用(`kind=image`)+ 生成 `_640` 列表缩略图
 4. 详情页"内容"tab 由前端渲染 Markdown;色板(色值+用途)首版由作者在正文中书写,前端对 hex 做行内色块增强(纯前端,可选增强)
+5. **主题由标签描述**:`light`/`dark`/`mixed`/`neutral` 等沿用普通标签与筛选,不新增主题能力或默认主题字段,不根据标签/正文推断图片分组。一版本仍是一份 DESIGN.md,内容/下载不随预览切换改变。混合、中性或未分类图片放在“默认”组。
+6. **固定六个预览槽位**:原 `preview_desktop_sha256`/`preview_mobile_sha256` 为默认组,新增四个 nullable 外键存浅色/深色桌面与移动图。迁移仅加列,不修改旧图片、正文、哈希或 blob 引用计数。发布在同一事务中为每个已填槽位增加引用(同一图片填多个位置按位置计数),删除制品时释放所有版本的六个槽位引用。每次发布完整指定该版本图片,不从上一版本继承。
+7. **读取契约**:详情 latest、版本列表与单版本均增加 `previews: [{theme, device, url, thumb_url}]`(只含已上传图片,无图片返回 `[]`)与 `preview_cover_url`;旧 `preview_desktop_url`/`preview_mobile_url` 仍仅表示默认组。列表 `preview_thumb_url` 和详情封面按“默认桌面→浅色桌面→深色桌面→默认移动→浅色移动→深色移动”取首张,无图片返回 null。图片扩展名批量查询,封面从列表 SQL 一并读取,避免逐条查询。
 
 ## 11. 文件与图片存储:两种寻址模型
 
@@ -441,6 +448,8 @@ web/src/
 
 - 路由:`/`(Skills)、`/designs`、`/s/{ns}/{name}[/files|/versions]`、`/d/{ns}/{name}[/content]`、`/publish`、`/publish/skills/{ns}/{name}`(技能新版本)、`/mine/...`、`/u/{username}`、`/account`、`/setup`、`/admin/...`
 - 上传:fetch `body: Blob`(raw),不用 FormData;`api/client.ts` 统一封装:错误格式、`X-Requested-With`、401 跳登录
+- DESIGN.md 发布:默认/浅色/深色三个上传分组,每组两个设备槽位,可替换或移除。逐槽位显示上传状态与错误,分组标签提示已添加/上传中/失败;任意图片上传中禁止发布。预览图随版本发布,编辑页仍仅改简介/标签。
+- DESIGN.md 详情预览:主题选项由实际图片决定,多组显示切换按钮,仅浅色/深色一组显示名称,只有默认组隐藏主题控件。设备切换使用可访问的按钮,缺图设备禁用并说明;切换主题时保留设备,若该主题缺此设备则切换到该主题已有设备。首次进入按默认→浅色→深色选组,组内桌面优先;历史版本切换尽量保留当前主题/设备,不可用时重新选择,不会将其他组图片显示在错误标签下。站点自身主题不影响截图选择;无图片显示空状态。发布页两列槽位在窄屏改为单列,预览控件允许换行。
 - 技能展示:列表、我的发布、后台列表、详情均以 `display_name` 为主,同时展示原 `name`(地址、唯一性、下载文件名仍使用原名称);搜索覆盖展示名称、原名称与简介。发布页必填展示名称,上传校验完成后默认填入包内 `name`,用户已编辑时保留输入;编辑页可修改展示名称。迁移为历史技能回填 `display_name = name`。列表/详情 API 返回 `display_name`。
 - 技能列表:市场、用户主页及管理列表均不展示技能简介/说明;详情页保留版本说明,简介仍存储并参与搜索。
 - 新版本发布：我的发布与作者自己的详情页提供“发布新版本”入口；显示目标展示名称、原名称和最高语义版本，默认建议补丁号 +1，最高为预发布时建议对应正式版本，并提供次版本/主版本建议及手动 SemVer 输入（含预发布与构建信息）。展示名称、图标、标签预填并折叠，说明从新包提取；包名不匹配阻止提交。普通发布页检查同命名空间下是否已有该技能，存在则引导使用新版本入口，查询失败不视为新技能。

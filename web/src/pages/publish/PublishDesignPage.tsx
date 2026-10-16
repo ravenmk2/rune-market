@@ -2,7 +2,8 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { designsApi } from "../../api/designs";
-import type { DesignValidateReport } from "../../api/designs";
+import type { DesignValidateReport, PreviewTheme, PreviewDevice } from "../../api/designs";
+import { previewThemes, previewThemeLabels } from "../../utils/designPreviews";
 import { imagesApi } from "../../api/images";
 import { ApiError } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
@@ -30,9 +31,10 @@ export function PublishDesignPage() {
   const [version, setVersion] = useState("0.1.0");
   const [tags, setTags] = useState("");
   const [summary, setSummary] = useState("");
-  const [desktop, setDesktop] = useState<UploadedImage | null>(null);
-  const [mobile, setMobile] = useState<UploadedImage | null>(null);
-  const [imageError, setImageError] = useState("");
+  const [previewTheme, setPreviewTheme] = useState<PreviewTheme>("default");
+  const [images, setImages] = useState<Record<string, UploadedImage | undefined>>({});
+  const [uploading, setUploading] = useState<Record<string, boolean>>({});
+  const [imageErrors, setImageErrors] = useState<Record<string, string>>({});
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState("");
 
@@ -53,24 +55,28 @@ export function PublishDesignPage() {
     }
   }
 
-  async function uploadImage(f: File, kind: "desktop" | "mobile") {
-    setImageError("");
+  async function uploadImage(f: File, theme: PreviewTheme, device: PreviewDevice) {
+    const slot = `${theme}/${device}`;
+    setImageErrors((prev) => ({ ...prev, [slot]: "" }));
+    setUploading((prev) => ({ ...prev, [slot]: true }));
     try {
       const r = await imagesApi.upload(f);
-      const uploaded = { sha256: r.sha256, previewUrl: URL.createObjectURL(f) };
-      if (kind === "desktop") setDesktop(uploaded);
-      else setMobile(uploaded);
+      setImages((prev) => ({ ...prev, [slot]: { sha256: r.sha256, previewUrl: r.url } }));
     } catch (e) {
-      setImageError(e instanceof ApiError ? e.message : "预览图上传失败,请重试");
+      setImageErrors((prev) => ({ ...prev, [slot]: e instanceof ApiError ? e.message : "预览图上传失败,请重试" }));
+    } finally {
+      setUploading((prev) => ({ ...prev, [slot]: false }));
     }
   }
 
   const hasError = !!report?.checks.some((c) => c.level === "error");
+  const imageBusy = Object.values(uploading).some(Boolean);
   const canSubmit =
-    !!user && !!file && content !== null && !!report && !hasError && !validating && !publishing;
+    !!user && !!file && content !== null && !!report && !hasError && !validating && !publishing && !imageBusy;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (!canSubmit) return;
     if (!NAME_RE.test(name.trim()) || name.trim().length > 64) {
       setError("名称需为小写字母、数字或连字符,且不能以连字符开头/结尾(≤64 字符)");
       return;
@@ -98,8 +104,12 @@ export function PublishDesignPage() {
           .split(/[,，]/)
           .map((t) => t.trim())
           .filter(Boolean),
-        preview_desktop: desktop?.sha256,
-        preview_mobile: mobile?.sha256,
+        previews: previewThemes.flatMap((theme) =>
+          (["desktop", "mobile"] as const).flatMap((device) => {
+            const image = images[`${theme}/${device}`];
+            return image ? [{ theme, device, sha256: image.sha256 }] : [];
+          }),
+        ),
       });
       navigate(`/d/${design.namespace}/${design.name}`);
     } catch (err) {
@@ -178,7 +188,7 @@ export function PublishDesignPage() {
                   value={version}
                   onChange={(e) => setVersion(e.target.value)}
                 />
-                <div className="hint">语义化版本,重新上传同版本号将覆盖</div>
+                <div className="hint">语义化版本，同一制品的版本号不能重复</div>
               </div>
 
               <div className="field">
@@ -209,31 +219,48 @@ export function PublishDesignPage() {
 
               <div className="field">
                 <label>预览图</label>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-                  <ImageSlot
-                    label="桌面端预览图"
-                    hint="建议 1440×900"
-                    uploaded={desktop}
-                    onFile={(f) => uploadImage(f, "desktop")}
-                  />
-                  <ImageSlot
-                    label="移动端预览图"
-                    hint="建议 390×844"
-                    uploaded={mobile}
-                    onFile={(f) => uploadImage(f, "mobile")}
-                  />
+                <div className="preview-switch" role="group" aria-label="上传预览主题">
+                  {previewThemes.map((theme) => (
+                    <button key={theme} type="button" aria-pressed={previewTheme === theme}
+                      className={previewTheme === theme ? "active" : ""}
+                      onClick={() => setPreviewTheme(theme)}>
+                      {previewThemeLabels[theme]}
+                      {(["desktop", "mobile"] as const).some((d) => uploading[`${theme}/${d}`]) ? " · 上传中" :
+                        (["desktop", "mobile"] as const).some((d) => imageErrors[`${theme}/${d}`]) ? " · 上传失败" :
+                        ""}
+                      {(["desktop", "mobile"] as const).some((d) => images[`${theme}/${d}`]) && " · 已添加"}
+                    </button>
+                  ))}
                 </div>
                 <div className="hint">
-                  用于列表缩略图与详情页预览,发布后不可单独修改,随版本更新
+                  混合或中性配色放在默认组。各组图片均可选，标签用于描述风格，不影响预览切换。
+                </div>
+                <div className="preview-upload-grid">
+                  {(["desktop", "mobile"] as const).map((device) => {
+                    const slot = `${previewTheme}/${device}`;
+                    return <div key={slot}>
+                      <ImageSlot
+                        label={`${previewThemeLabels[previewTheme]}${device === "desktop" ? "桌面端" : "移动端"}预览图`}
+                        hint={device === "desktop" ? "建议 1440×900" : "建议 390×844"}
+                        uploaded={images[slot] ?? null}
+                        busy={!!uploading[slot]}
+                        disabled={publishing}
+                        onFile={(f) => uploadImage(f, previewTheme, device)}
+                        onRemove={() => {
+                          setImages((prev) => ({ ...prev, [slot]: undefined }));
+                          setImageErrors((prev) => ({ ...prev, [slot]: "" }));
+                        }}
+                      />
+                      {imageErrors[slot] && <p className="preview-upload-error" role="alert">{imageErrors[slot]}</p>}
+                    </div>;
+                  })}
+                </div>
+                <div className="hint">
+                  图片随版本发布，用于列表封面和详情预览，发布后不可单独修改。每张支持 PNG/JPG，最大 5MB。
+                  {imageBusy && " 正在上传图片，请稍候…"}
                 </div>
               </div>
 
-              {imageError && (
-                <div className="alert err" style={{ marginBottom: 16 }}>
-                  <span>!</span>
-                  <span>{imageError}</span>
-                </div>
-              )}
               {error && (
                 <div className="alert err" style={{ marginBottom: 16 }}>
                   <span>!</span>
@@ -260,7 +287,7 @@ export function PublishDesignPage() {
               </li>
               <li style={{ margin: "6px 0" }}>制品名在你的命名空间下唯一</li>
               <li style={{ margin: "6px 0" }}>
-                同名制品的新版本会创建 artifact_version,可在详情页切换历史版本
+                同名制品发布新版本后，可在详情页切换查看历史版本
               </li>
             </ul>
           </div>
@@ -302,12 +329,18 @@ function ImageSlot({
   label,
   hint,
   uploaded,
+  busy,
+  disabled,
   onFile,
+  onRemove,
 }: {
   label: string;
   hint: string;
   uploaded: UploadedImage | null;
+  busy: boolean;
+  disabled: boolean;
   onFile: (file: File) => void;
+  onRemove: () => void;
 }) {
   if (uploaded) {
     return (
@@ -316,9 +349,11 @@ function ImageSlot({
           <img src={uploaded.previewUrl} alt={label} />
         </div>
         <div className="hint" style={{ fontSize: 12.5, color: "var(--ok)", marginTop: 5 }}>
-          ✓ {label}已上传,可重新选择替换
+          {busy ? "正在上传替换图片…" : `✓ ${label}已上传`}
           <span style={{ display: "block" }}>
-            <ChangeImageButton onFile={onFile} />
+            <ChangeImageButton onFile={onFile} disabled={disabled || busy} />
+            <button type="button" className="btn btn-outline btn-sm" style={{ marginLeft: 10 }}
+              disabled={disabled || busy} onClick={onRemove}>移除</button>
           </span>
         </div>
       </div>
@@ -327,20 +362,22 @@ function ImageSlot({
   return (
     <Dropzone
       accept="image/png,image/jpeg"
-      title={label}
+      title={busy ? "正在上传…" : label}
       sub={hint}
+      disabled={disabled || busy}
       onFile={onFile}
     />
   );
 }
 
-function ChangeImageButton({ onFile }: { onFile: (file: File) => void }) {
+function ChangeImageButton({ onFile, disabled }: { onFile: (file: File) => void; disabled: boolean }) {
   return (
-    <label style={{ color: "var(--accent)", cursor: "pointer" }}>
+    <label style={{ color: "var(--accent)", cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1 }}>
       重新选择
       <input
         type="file"
         accept="image/png,image/jpeg"
+        disabled={disabled}
         style={{ display: "none" }}
         onChange={(e) => {
           const f = e.target.files?.[0];

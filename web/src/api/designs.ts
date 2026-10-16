@@ -2,6 +2,20 @@ import { api, API_BASE } from "./client";
 import type { ListResult, Query } from "./client";
 import type { Owner, ValidateCheck } from "./skills";
 
+export type PreviewTheme = "default" | "light" | "dark";
+export type PreviewDevice = "desktop" | "mobile";
+export interface DesignPreview {
+  theme: PreviewTheme;
+  device: PreviewDevice;
+  url: string;
+  thumb_url: string;
+}
+export interface DesignPreviewInput {
+  theme: PreviewTheme;
+  device: PreviewDevice;
+  sha256: string;
+}
+
 /** DESIGN.md 市场与发布(docs/design.md §8.3 / §8.4 / §10) */
 
 export interface DesignListItem {
@@ -24,6 +38,8 @@ export interface DesignVersionMeta {
   sha256: string;
   preview_desktop_url: string | null;
   preview_mobile_url: string | null;
+  preview_cover_url: string | null;
+  previews: DesignPreview[];
   created_at: string;
 }
 
@@ -50,6 +66,7 @@ export interface PublishDesignInput {
   /** POST /images 预上传得到的 sha256,可空 */
   preview_desktop?: string;
   preview_mobile?: string;
+  previews?: DesignPreviewInput[];
 }
 
 export const designsApi = {
@@ -75,6 +92,7 @@ export const designsApi = {
         tags: input.tags.length > 0 ? input.tags : undefined,
         preview_desktop: input.preview_desktop || undefined,
         preview_mobile: input.preview_mobile || undefined,
+        previews: input.previews,
       })
       .then((r) => r.design),
 

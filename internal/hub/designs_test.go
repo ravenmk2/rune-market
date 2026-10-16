@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/png"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/ravenmk2/rune-market/internal/blob"
@@ -213,3 +214,98 @@ func TestDesignUpdateStatusDelete(t *testing.T) {
 }
 
 func strptr(s string) *string { return &s }
+
+func TestDesignThemePreviewsLifecycle(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+	sha := env.uploadImage(t, 80, 60)
+	in := DesignPublishInput{Owner: env.owner, Name: "themes", Version: "1.0.0", Content: []byte(sampleDesignDoc)}
+	for _, theme := range []string{"default", "light", "dark"} {
+		for _, device := range []string{"desktop", "mobile"} {
+			in.Previews = append(in.Previews, DesignPreviewInput{Theme: theme, Device: device, SHA256: sha})
+		}
+	}
+	d, _, err := env.designs.Publish(ctx, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkRefs := func(want int) {
+		t.Helper()
+		var refs int
+		if err := env.db.DB.QueryRowContext(ctx, "SELECT ref_count FROM blob WHERE sha256 = ?", sha).Scan(&refs); err != nil {
+			t.Fatal(err)
+		}
+		if refs != want {
+			t.Fatalf("refs = %d, want %d", refs, want)
+		}
+	}
+	checkRefs(7)
+	v, err := env.designs.GetVersion(ctx, d.ID, "1.0.0")
+	if err != nil || len(v.Previews()) != 6 {
+		t.Fatalf("round trip: %+v, %v", v, err)
+	}
+	if _, _, err := env.designs.Publish(ctx, in); !errors.Is(err, ErrVersionExists) {
+		t.Fatalf("conflict: %v", err)
+	}
+	checkRefs(7)
+
+	// Failure after the first reference must roll back its ref count.
+	in.Version = "1.1.0"
+	in.Previews = []DesignPreviewInput{{"light", "desktop", sha}, {"dark", "desktop", strings.Repeat("0", 64)}}
+	if _, _, err := env.designs.Publish(ctx, in); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("missing blob: %v", err)
+	}
+	checkRefs(7)
+	detail, err := env.designs.GetDetailByID(ctx, d.ID)
+	if err != nil || detail.LatestVersion != "1.0.0" {
+		t.Fatalf("latest changed on failure: %+v %v", detail, err)
+	}
+
+	// New versions do not inherit old images. Dark-only mobile covers work.
+	in.Previews = []DesignPreviewInput{{"dark", "mobile", sha}}
+	if _, _, err := env.designs.Publish(ctx, in); err != nil {
+		t.Fatal(err)
+	}
+	items, _, err := env.designs.List(ctx, ListFilter{})
+	if err != nil || len(items) != 1 || items[0].PreviewDesktopSHA256 == nil || *items[0].PreviewDesktopSHA256 != sha {
+		t.Fatalf("mobile cover: %+v %v", items, err)
+	}
+	versions, err := env.designs.ListVersions(ctx, d.ID)
+	if err != nil || len(versions) != 2 || len(versions[0].Previews()) != 1 || len(versions[1].Previews()) != 6 {
+		t.Fatalf("versions: %+v %v", versions, err)
+	}
+	checkRefs(8)
+	if err := env.designs.Delete(ctx, env.owner, d.ID); err != nil {
+		t.Fatal(err)
+	}
+	checkRefs(1)
+}
+
+func TestDesignPreviewSlotValidation(t *testing.T) {
+	env := newTestEnv(t)
+	sha := env.uploadImage(t, 80, 60)
+	archiveSHA := strings.Repeat("b", 64)
+	if _, err := env.db.DB.ExecContext(context.Background(), "INSERT INTO blob (sha256, kind, size, ref_count, created_at) VALUES (?, 'archive', 1, 1, ?)", archiveSHA, store.Now()); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name     string
+		previews []DesignPreviewInput
+		legacy   string
+	}{
+		{"unknown theme", []DesignPreviewInput{{"neutral", "desktop", sha}}, ""},
+		{"unknown device", []DesignPreviewInput{{"default", "tablet", sha}}, ""},
+		{"duplicate", []DesignPreviewInput{{"dark", "mobile", sha}, {"dark", "mobile", sha}}, ""},
+		{"empty hash", []DesignPreviewInput{{"light", "desktop", ""}}, ""},
+		{"bad hash", []DesignPreviewInput{{"light", "desktop", strings.Repeat("g", 64)}}, ""},
+		{"archive reference", []DesignPreviewInput{{"dark", "desktop", archiveSHA}}, ""},
+		{"mixed transports", []DesignPreviewInput{}, sha},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, err := env.designs.Publish(context.Background(), DesignPublishInput{Owner: env.owner, Name: "bad-preview", Version: "1.0.0", Content: []byte(sampleDesignDoc), Previews: tc.previews, PreviewDesktop: tc.legacy})
+			if !errors.Is(err, ErrInvalidInput) {
+				t.Fatalf("expected invalid input, got %v", err)
+			}
+		})
+	}
+}

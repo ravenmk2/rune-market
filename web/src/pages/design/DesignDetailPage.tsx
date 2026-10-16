@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, NavLink, Route, Routes, useParams } from "react-router-dom";
 import { designsApi, designDownloadUrl } from "../../api/designs";
-import type { DesignDetail, DesignVersionMeta } from "../../api/designs";
+import type { DesignDetail, DesignVersionMeta, PreviewTheme } from "../../api/designs";
+import { previewThemes, previewThemeLabels, selectDesignPreview } from "../../utils/designPreviews";
 import { ApiError } from "../../api/client";
 import { OfficialBadge } from "../../components/Badge";
 import { Tag } from "../../components/Tag";
@@ -69,15 +70,15 @@ export function DesignDetailPage() {
   const base = `/d/${ns}/${name}`;
 
   return (
-    <main className="container">
+    <main className="container design-detail">
       <div className="crumbs">
         <Link to="/">浏览</Link> / <Link to="/designs">DESIGN.md</Link> / {name}
       </div>
 
       <section className="detail-head">
-        {current?.preview_desktop_url && (
+        {current?.preview_cover_url && (
           <div className="detail-icon">
-            <img src={current.preview_desktop_url} alt={`${name} 预览`} />
+            <img src={current.preview_cover_url} alt={`${name} 预览`} />
           </div>
         )}
         <div>
@@ -153,23 +154,46 @@ export function DesignDetailPage() {
 
 function PreviewTab({ version }: { version?: DesignVersionMeta }) {
   const [mode, setMode] = useState<PreviewMode>("desktop");
+  const [theme, setTheme] = useState<PreviewTheme>("default");
+  const previews = version?.previews ?? [];
+  const selected = selectDesignPreview(previews, theme, mode);
+  const selectedTheme = selected?.theme ?? "default";
+  const selectedDevice = selected?.device ?? "desktop";
+  const themes = previewThemes.filter((t) => previews.some((p) => p.theme === t));
+  const devices = previews.filter((p) => p.theme === selectedTheme).map((p) => p.device);
 
-  const url = mode === "desktop" ? version?.preview_desktop_url : version?.preview_mobile_url;
-  const label = mode === "desktop" ? "桌面端" : "移动端";
+  useEffect(() => {
+    setTheme(selectedTheme);
+    setMode(selectedDevice);
+  }, [version?.version, selectedTheme, selectedDevice]);
+
+  const label = `${previewThemeLabels[selectedTheme]}${selectedDevice === "desktop" ? "桌面端" : "移动端"}`;
 
   return (
     <div className="panel panel-pad">
       <div className="preview-head">
         <h2>预览</h2>
-        <PreviewSwitch mode={mode} onChange={setMode} />
+        <div className="preview-controls">
+          {themes.length > 1 ? (
+            <div className="preview-switch" role="group" aria-label="预览主题">
+              {themes.map((t) => <button key={t} type="button" aria-pressed={selectedTheme === t}
+                className={selectedTheme === t ? "active" : ""} onClick={() => setTheme(t)}>
+                {previewThemeLabels[t]}
+              </button>)}
+            </div>
+          ) : themes.length === 1 && selectedTheme !== "default" ? (
+            <span className="muted">{previewThemeLabels[selectedTheme]}</span>
+          ) : null}
+          {previews.length > 0 && <PreviewSwitch mode={selectedDevice} available={devices} onChange={setMode} />}
+        </div>
       </div>
-      {mode === "mobile" && <p className="preview-caption">移动端预览</p>}
-      <div className={`preview-frame${mode === "mobile" ? " mobile" : ""}`}>
-        {url ? (
-          <img src={url} alt={`${label}预览`} />
+      {selectedDevice === "mobile" && selected && <p className="preview-caption">{label}预览</p>}
+      <div className={`preview-frame${selectedDevice === "mobile" ? " mobile" : ""}`}>
+        {selected ? (
+          <img src={selected.url} alt={`${label}预览`} />
         ) : (
           <p className="muted" style={{ padding: "60px 24px", textAlign: "center" }}>
-            作者未上传{label}预览图。
+            作者未上传预览图。
           </p>
         )}
       </div>

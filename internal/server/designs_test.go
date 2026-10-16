@@ -34,6 +34,88 @@ Primary #1a73e8, surface #ffffff.
 Inter.
 `
 
+func TestDesignThemePreviewsAPI(t *testing.T) {
+	env := newSkillsEnvWithDesigns(t)
+	light := env.uploadImage(t, makeTestJPEG(t, 80, 60))["sha256"].(string)
+	dark := env.uploadImage(t, makeTestPNG(t, 30, 60))["sha256"].(string)
+	body := map[string]any{"name": "theme-api", "version": "1.0.0", "content": sampleDesign,
+		"tags": []string{"neutral"}, "previews": []hub.DesignPreviewInput{
+			{Theme: "light", Device: "desktop", SHA256: light},
+			{Theme: "dark", Device: "mobile", SHA256: dark},
+		}}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := env.do(t, http.MethodPost, "/api/v1/designs", string(raw), env.cookie, nil)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("publish: %d %s", w.Code, w.Body)
+	}
+	d := decode(t, w)["design"].(map[string]any)
+	latest := d["latest"].(map[string]any)
+	if latest["preview_desktop_url"] != nil || latest["preview_mobile_url"] != nil {
+		t.Fatalf("themed previews mislabeled as default: %v", latest)
+	}
+	if d["preview_thumb_url"] != "/images/"+light+"_640.png" || latest["preview_cover_url"] != "/images/"+light+".jpg" {
+		t.Fatalf("cover: %v", d)
+	}
+	checkPreviews := func(v map[string]any) {
+		t.Helper()
+		previews := v["previews"].([]any)
+		if len(previews) != 2 {
+			t.Fatalf("previews: %v", previews)
+		}
+		for i, want := range []struct{ theme, device, url string }{{"light", "desktop", "/images/" + light + ".jpg"}, {"dark", "mobile", "/images/" + dark + ".png"}} {
+			p := previews[i].(map[string]any)
+			if p["theme"] != want.theme || p["device"] != want.device || p["url"] != want.url || p["thumb_url"] == nil {
+				t.Fatalf("preview: %v", p)
+			}
+		}
+	}
+	checkPreviews(latest)
+	base := "/api/v1/designs/raven/theme-api"
+	for _, path := range []string{base, base + "/versions", base + "/versions/1.0.0"} {
+		w = env.do(t, http.MethodGet, path, "", nil, nil)
+		if w.Code != http.StatusOK {
+			t.Fatalf("read %s: %d %s", path, w.Code, w.Body)
+		}
+		m := decode(t, w)
+		if v, ok := m["design"]; ok {
+			checkPreviews(v.(map[string]any)["latest"].(map[string]any))
+		} else if v, ok := m["version"]; ok {
+			checkPreviews(v.(map[string]any))
+		} else {
+			checkPreviews(m["items"].([]any)[0].(map[string]any))
+		}
+	}
+	w = env.do(t, http.MethodGet, base+"/versions/1.0.0/download", "", nil, nil)
+	if w.Code != http.StatusOK || w.Body.String() != sampleDesign {
+		t.Fatal("download changed")
+	}
+	// Existing clients still publish the default group without any new fields.
+	legacy := env.publishDesign(t, "theme-api", "", "1.1.0", nil, dark, "")
+	p := legacy["latest"].(map[string]any)["previews"].([]any)
+	if len(p) != 1 || p[0].(map[string]any)["theme"] != "default" {
+		t.Fatalf("legacy: %v", p)
+	}
+	for _, previews := range []any{
+		[]hub.DesignPreviewInput{{Theme: "mixed", Device: "desktop", SHA256: light}},
+		[]hub.DesignPreviewInput{{Theme: "dark", Device: "mobile", SHA256: dark}, {Theme: "dark", Device: "mobile", SHA256: dark}},
+		[]hub.DesignPreviewInput{{Theme: "dark", Device: "mobile", SHA256: "bad"}},
+	} {
+		body["previews"] = previews
+		body["version"] = "2.0.0"
+		raw, err := json.Marshal(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		w = env.do(t, http.MethodPost, "/api/v1/designs", string(raw), env.cookie, nil)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("invalid previews: %d %s", w.Code, w.Body)
+		}
+	}
+}
+
 func makeTestPNG(t *testing.T, w, h int) []byte {
 	t.Helper()
 	img := image.NewRGBA(image.Rect(0, 0, w, h))

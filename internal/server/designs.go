@@ -82,10 +82,8 @@ func previewExtMap(ctx context.Context, blobs *blob.Storage, db store.DBTX, vers
 		if v == nil {
 			continue
 		}
-		for _, sha := range []*string{v.PreviewDesktopSHA256, v.PreviewMobileSHA256} {
-			if sha != nil && *sha != "" {
-				shas = append(shas, *sha)
-			}
+		for _, p := range v.Previews() {
+			shas = append(shas, *p.SHA256)
 		}
 	}
 	return blobs.ImageExts(ctx, db, shas)
@@ -116,7 +114,14 @@ func designItemJSON(it hub.DesignItem) gin.H {
 }
 
 func designVersionJSON(v *store.DesignmdVersion, exts map[string]string) gin.H {
+	previews := make([]gin.H, 0, 6)
+	for _, p := range v.Previews() {
+		previews = append(previews, gin.H{"theme": p.Theme, "device": p.Device,
+			"url": previewURL(p.SHA256, "", exts), "thumb_url": previewURL(p.SHA256, "_640", exts)})
+	}
 	return gin.H{
+		"previews":            previews,
+		"preview_cover_url":   previewURL(v.CoverSHA256(), "", exts),
 		"version":             v.Version,
 		"sha256":              v.SHA256,
 		"preview_desktop_url": previewURL(v.PreviewDesktopSHA256, "", exts),
@@ -383,13 +388,14 @@ func validateContentLength(c *gin.Context, content string) bool {
 }
 
 type publishDesignRequest struct {
-	Content        string   `json:"content"`
-	Name           string   `json:"name"`
-	Summary        string   `json:"summary"`
-	Version        string   `json:"version"`
-	Tags           []string `json:"tags"`
-	PreviewDesktop string   `json:"preview_desktop"`
-	PreviewMobile  string   `json:"preview_mobile"`
+	Content        string                   `json:"content"`
+	Name           string                   `json:"name"`
+	Summary        string                   `json:"summary"`
+	Version        string                   `json:"version"`
+	Tags           []string                 `json:"tags"`
+	PreviewDesktop string                   `json:"preview_desktop"`
+	PreviewMobile  string                   `json:"preview_mobile"`
+	Previews       []hub.DesignPreviewInput `json:"previews"`
 }
 
 // publish handles POST /designs (§8.4): JSON body; preview_* reference image
@@ -439,6 +445,7 @@ func (h *DesignsHandler) publish(c *gin.Context) {
 		Content:        []byte(req.Content),
 		PreviewDesktop: req.PreviewDesktop,
 		PreviewMobile:  req.PreviewMobile,
+		Previews:       req.Previews,
 		ReviewRequired: h.getStr(ctx, "artifact_review", "none") == "required",
 		Official:       user.Role == store.RoleAdmin,
 	})
