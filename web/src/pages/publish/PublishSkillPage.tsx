@@ -6,6 +6,7 @@ import type { ValidateReport } from "../../api/skills";
 import { imagesApi } from "../../api/images";
 import { ApiError } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
+import { SkillIcon } from "../../components/SkillIcon";
 import { Dropzone } from "../../components/Dropzone";
 import { CheckList } from "../../components/CheckList";
 import { HarnessChip } from "../../components/HarnessChip";
@@ -25,6 +26,8 @@ export function PublishSkillPage() {
   const [report, setReport] = useState<ValidateReport | null>(null);
   const [validating, setValidating] = useState(false);
   const [validateError, setValidateError] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const displayNameDirty = useRef(false);
   const [version, setVersion] = useState("0.1.0");
   const [description, setDescription] = useState("");
   const [descDirty, setDescDirty] = useState(false);
@@ -47,6 +50,7 @@ export function PublishSkillPage() {
       const r = await archivesApi.upload(f);
       setArchive({ sha256: r.sha256, size: r.size });
       setReport(r.report);
+      if (!displayNameDirty.current) setDisplayName(r.report.metadata.name);
       if (!descDirty) setDescription(r.report.metadata.description);
     } catch (e) {
       setValidateError(e instanceof ApiError ? e.message : "校验请求失败,请重试");
@@ -110,6 +114,10 @@ export function PublishSkillPage() {
       setError("版本号需为语义化版本,如 1.0.0");
       return;
     }
+    if (!displayName.trim() || Array.from(displayName.trim()).length > 64) {
+      setError("展示名称需为 1–64 个字符");
+      return;
+    }
     setError("");
     setPublishing(true);
     try {
@@ -119,6 +127,7 @@ export function PublishSkillPage() {
         .filter(Boolean);
       const skill = await skillsApi.publish({
         archive: archive.sha256,
+        display_name: displayName.trim(),
         version: version.trim(),
         tags: tagList,
         description: description.trim(),
@@ -188,6 +197,22 @@ export function PublishSkillPage() {
 
             <form style={{ marginTop: 22 }} onSubmit={submit}>
               <div className="field">
+                <label htmlFor="f-display-name">展示名称</label>
+                <input
+                  className="input"
+                  id="f-display-name"
+                  required
+                  placeholder="如：技能创建者"
+                  value={displayName}
+                  onChange={(e) => {
+                    setDisplayName(e.target.value);
+                    displayNameDirty.current = true;
+                  }}
+                />
+                <div className="hint">默认与包内名称相同，可修改为便于阅读的名称（1–64 个字符）</div>
+                {report && <div className="hint">原名称：<span className="mono">{report.metadata.name}</span></div>}
+              </div>
+              <div className="field">
                 <label htmlFor="f-version">版本号</label>
                 <input
                   className="input mono"
@@ -203,13 +228,7 @@ export function PublishSkillPage() {
               <div className="field">
                 <label>图标(可选)</label>
                 <div className="icon-field">
-                  <div className="detail-icon">
-                    {icon ? (
-                      <img src={icon.previewUrl} alt="图标预览" />
-                    ) : (
-                      (report?.metadata.name || "?").charAt(0).toUpperCase()
-                    )}
-                  </div>
+                  <SkillIcon url={icon?.previewUrl} className="detail-icon" />
                   <div style={{ display: "flex", gap: 10 }}>
                     <button
                       className="btn btn-outline btn-sm"
@@ -248,7 +267,7 @@ export function PublishSkillPage() {
                     <span>{iconError}</span>
                   </div>
                 )}
-                <div className="hint">PNG / JPEG,裁剪为方形后导出 256px;缺省使用名称首字母占位</div>
+                <div className="hint">PNG / JPEG,裁剪为方形后导出 256px;未上传时使用统一默认图标</div>
               </div>
 
               <div className="field">

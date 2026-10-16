@@ -91,8 +91,8 @@ export function UserProfilePage() {
             Skills
           </h2>
           <section className="grid">
-            {skills.map((s, i) => (
-              <SkillCard key={`${s.namespace}/${s.name}`} skill={s} index={i} />
+            {skills.map((s) => (
+              <SkillCard key={`${s.namespace}/${s.name}`} skill={s} />
             ))}
           </section>
         </>

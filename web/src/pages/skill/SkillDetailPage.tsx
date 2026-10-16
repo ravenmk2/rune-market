@@ -3,6 +3,7 @@ import { Link, NavLink, Route, Routes, useParams } from "react-router-dom";
 import { skillsApi, skillDownloadUrl } from "../../api/skills";
 import type { FileContent, FileEntry, SkillDetail, VersionMeta } from "../../api/skills";
 import { ApiError } from "../../api/client";
+import { SkillIcon } from "../../components/SkillIcon";
 import { OfficialBadge } from "../../components/Badge";
 import { Tag } from "../../components/Tag";
 import { HarnessChip } from "../../components/HarnessChip";
@@ -25,7 +26,7 @@ export function SkillDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  useTitle(skill ? `${skill.name} · RuneMarket` : undefined);
+  useTitle(skill ? `${skill.display_name || skill.name} · RuneMarket` : undefined);
 
   useEffect(() => {
     let cancelled = false;
@@ -79,17 +80,12 @@ export function SkillDetailPage() {
       </div>
 
       <section className="detail-head">
-        {skill.icon_url ? (
-          <div className="detail-icon">
-            <img src={skill.icon_url} alt="" />
-          </div>
-        ) : (
-          <div className="detail-icon">{name.charAt(0).toUpperCase()}</div>
-        )}
+        <SkillIcon url={skill.icon_url} className="detail-icon" />
         <div>
           <h1>
-            <span className="ns">{ns} /</span> {name} {skill.official && <OfficialBadge />}
+            {skill.display_name || name} {skill.official && <OfficialBadge />}
           </h1>
+          <div className="skill-original-name">{ns}/{name}</div>
           <div className="detail-meta-row">
             <span>
               发布者{" "}

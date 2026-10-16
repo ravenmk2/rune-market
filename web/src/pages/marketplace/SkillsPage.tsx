@@ -122,8 +122,8 @@ export function SkillsPage() {
         </div>
       ) : (
         <section className="grid">
-          {data?.items.map((s, i) => (
-            <SkillCard key={`${s.namespace}/${s.name}`} skill={s} index={i} />
+          {data?.items.map((s) => (
+            <SkillCard key={`${s.namespace}/${s.name}`} skill={s} />
           ))}
         </section>
       )}

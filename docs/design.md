@@ -183,6 +183,7 @@ CREATE TABLE skill (
   id                CHAR(32)   PRIMARY KEY,
   owner_id          CHAR(32)   NOT NULL REFERENCES user(id),
   name              VARCHAR(64) NOT NULL,
+  display_name      VARCHAR(64) NOT NULL DEFAULT '', -- 技能展示名称,默认 name,1–64 字符
   summary           VARCHAR(1024) NOT NULL DEFAULT '', -- 取自最新版本 description,发布后可编辑
   official          BOOLEAN     NOT NULL DEFAULT 0,
   status            VARCHAR(16) NOT NULL DEFAULT 'published', -- pending | published | taken_down
@@ -332,11 +333,11 @@ CREATE TABLE setting (
 | --- | --- | --- |
 | POST | `/images` | 图片上传:**raw body = PNG/JPG**(≤5MB,保留原格式),返回 `{sha256, ext, size, url, thumb_url}`;供预览图与 skill 图标预上传 |
 | POST | `/archives` | skill 压缩包上传:**raw body**(≤`upload_max_mb`),落 blob(内容寻址去重)后 Inspect,返回 `{sha256, size, report, metadata}`;多阶段发布第一步,上传页即时报错 |
-| POST | `/skills` | 正式发布:**JSON** `{archive, version, tags?, description?, icon?}`;`archive` 为 `/archives` 所得 sha256(须存在且 kind=archive,服务端重新 Inspect,报告有 error 拒绝);`icon` 为 `/images` 所得 sha256(可空,须 kind=image);同名制品存在 → 新版本;`description` 非空时替代包内 description(同时写入 summary 与当前版本描述,≤1024) |
+| POST | `/skills` | 正式发布:**JSON** `{archive, version, display_name?, tags?, description?, icon?}`;`archive` 为 `/archives` 所得 sha256(须存在且 kind=archive,服务端重新 Inspect,报告有 error 拒绝);`icon` 为 `/images` 所得 sha256(可空,须 kind=image);同名制品存在 → 新版本;`display_name` 去除首尾空白后≤64 字符,新制品未提供/空值默认包内 name,已有制品未提供/空值保留原展示名称;`description` 非空时替代包内 description(同时写入 summary 与当前版本描述,≤1024) |
 | POST | `/designs/validate` | **JSON** `{name, content}` 干跑,返回弱验证报告(发布页预检) |
 | POST | `/designs` | **JSON** `{content, name, summary?, version, tags?, preview_desktop?, preview_mobile?}`;preview_* 为先前 `POST /images` 得到的 sha256(可空) |
 | GET | `/mine/skills` / `/mine/designs` | 我的制品 |
-| PUT | `/skills/{id}` | 改标签(JSON;skill 还可改 summary、当前版本 description 与 `icon`——sha256 设置 / `""` 清除 / 缺省不变;designmd 可改 summary) |
+| PUT | `/skills/{id}` | 改标签(JSON;skill 还可改 display_name(去除首尾空白后 1–64 字符)、summary、当前版本 description 与 `icon`——sha256 设置 / `""` 清除 / 缺省不变;designmd 可改 summary) |
 | POST | `/skills/{id}/takedown` `/restore` | 下架/恢复(designmd 对称) |
 | DELETE | `/skills/{id}` / `/designs/{id}` | 删除(级联版本,事务内减 blob 引用,含图标) |
 
@@ -438,6 +439,9 @@ web/src/
 
 - 路由:`/`(Skills)、`/designs`、`/s/{ns}/{name}[/files|/versions]`、`/d/{ns}/{name}[/content]`、`/publish`、`/mine/...`、`/u/{username}`、`/account`、`/setup`、`/admin/...`
 - 上传:fetch `body: Blob`(raw),不用 FormData;`api/client.ts` 统一封装:错误格式、`X-Requested-With`、401 跳登录
+- 技能展示:列表、我的发布、后台列表、详情均以 `display_name` 为主,同时展示原 `name`(地址、唯一性、下载文件名仍使用原名称);搜索覆盖展示名称、原名称与简介。发布页必填展示名称,上传校验完成后默认填入包内 `name`,用户已编辑时保留输入;编辑页可修改展示名称。迁移为历史技能回填 `display_name = name`。列表/详情 API 返回 `display_name`。
+- 技能列表:市场、用户主页及管理列表均不展示技能简介/说明;详情页保留版本说明,简介仍存储并参与搜索。
+- 技能默认图标:未上传自定义图片时,技能卡片、详情、发布和编辑表单统一使用暖橙色“文档 + 星芒”SVG(`SkillIcon`),不使用名称首字母或轮换底色。
 - 头像组件:`has_avatar` 为真输出 `/avatars/{id}_{size}.png?v={updated_at}`,否则字母占位
 - 鉴权态:`GET /auth/me` 全局 Context;admin 路由前端守卫 + 后端强制
 - 开发:Vite dev server 代理 `/api`、`/images`、`/avatars` 到 Go(:8080);生产走 embed SPA 回退(静态命中则直出,否则回退 index.html;API 路由先注册)

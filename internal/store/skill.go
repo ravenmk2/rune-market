@@ -18,6 +18,7 @@ type Skill struct {
 	ID              string
 	OwnerID         string
 	Name            string
+	DisplayName     string
 	Summary         string
 	Official        bool
 	Status          string
@@ -34,19 +35,19 @@ type SkillStore struct {
 
 func NewSkillStore(db DBTX) *SkillStore { return &SkillStore{db: db} }
 
-const skillColumns = `id, owner_id, name, summary, official, status, latest_version_id, icon_sha256, download_count, created_at, updated_at`
+const skillColumns = `id, owner_id, name, display_name, summary, official, status, latest_version_id, icon_sha256, download_count, created_at, updated_at`
 
 func (s *SkillStore) Create(ctx context.Context, sk *Skill) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO skill (`+skillColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		sk.ID, sk.OwnerID, sk.Name, sk.Summary, sk.Official, sk.Status,
+		`INSERT INTO skill (`+skillColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		sk.ID, sk.OwnerID, sk.Name, sk.DisplayName, sk.Summary, sk.Official, sk.Status,
 		sk.LatestVersionID, sk.IconSHA256, sk.DownloadCount, sk.CreatedAt, sk.UpdatedAt)
 	return err
 }
 
 func scanSkill(row interface{ Scan(...any) error }) (*Skill, error) {
 	var sk Skill
-	err := row.Scan(&sk.ID, &sk.OwnerID, &sk.Name, &sk.Summary, &sk.Official,
+	err := row.Scan(&sk.ID, &sk.OwnerID, &sk.Name, &sk.DisplayName, &sk.Summary, &sk.Official,
 		&sk.Status, &sk.LatestVersionID, &sk.IconSHA256, &sk.DownloadCount, &sk.CreatedAt, &sk.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -78,6 +79,12 @@ func (s *SkillStore) UpdateAfterPublish(ctx context.Context, id, latestVersionID
 func (s *SkillStore) UpdateSummary(ctx context.Context, id, summary string, updatedAt time.Time) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE skill SET summary = ?, updated_at = ? WHERE id = ?`, summary, updatedAt, id)
+	return err
+}
+
+func (s *SkillStore) UpdateDisplayName(ctx context.Context, id, displayName string, updatedAt time.Time) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE skill SET display_name = ?, updated_at = ? WHERE id = ?`, displayName, updatedAt, id)
 	return err
 }
 

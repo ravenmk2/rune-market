@@ -66,6 +66,7 @@ func skillItemJSON(it hub.SkillItem) gin.H {
 		"id":             it.Skill.ID,
 		"namespace":      it.OwnerUsername,
 		"name":           it.Skill.Name,
+		"display_name":   it.Skill.DisplayName,
 		"summary":        it.Skill.Summary,
 		"official":       it.Skill.Official,
 		"status":         it.Skill.Status,
@@ -416,6 +417,7 @@ func (h *SkillsHandler) uploadArchive(c *gin.Context) {
 }
 
 type publishSkillRequest struct {
+	DisplayName string   `json:"display_name"`
 	Archive     string   `json:"archive"`
 	Version     string   `json:"version"`
 	Tags        []string `json:"tags"`
@@ -451,6 +453,7 @@ func (h *SkillsHandler) publish(c *gin.Context) {
 		Version:        req.Version,
 		Tags:           req.Tags,
 		Description:    req.Description,
+		DisplayName:    req.DisplayName,
 		ArchiveSHA256:  req.Archive,
 		IconSHA256:     req.Icon,
 		ReviewRequired: h.getStr(ctx, "artifact_review", "none") == "required",
@@ -502,6 +505,7 @@ func (h *SkillsHandler) mine(c *gin.Context) {
 }
 
 type updateSkillRequest struct {
+	DisplayName *string  `json:"display_name"`
 	Summary     *string  `json:"summary"`
 	Description *string  `json:"description"` // edits the current version's description
 	Tags        []string `json:"tags"`
@@ -519,7 +523,7 @@ func (h *SkillsHandler) update(c *gin.Context) {
 		return
 	}
 	err := h.hub.Update(c.Request.Context(), auth.CurrentUser(c), c.Param("id"),
-		req.Summary, req.Description, req.Tags, req.Icon)
+		req.Summary, req.Description, req.Tags, req.Icon, req.DisplayName)
 	h.writeManageResult(c, err)
 }
 

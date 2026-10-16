@@ -124,12 +124,12 @@ export function AdminSkillsPage() {
                 const busy = acting === s.id;
                 return (
                   <tr key={s.id}>
-                    <td className="mono">
+                    <td>
                       <Link to={`/s/${s.namespace}/${s.name}`}>
-                        <span className="ns">{s.namespace}/</span>
-                        {s.name}
+                        {s.display_name || s.name}
                       </Link>{" "}
                       {s.official && <OfficialBadge />}
+                      <div className="skill-original-name">{s.namespace}/{s.name}</div>
                     </td>
                     <td className="muted">
                       {s.owner.nickname || s.owner.username} (@{s.owner.username})

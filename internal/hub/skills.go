@@ -76,6 +76,7 @@ type PublishInput struct {
 	Version        string   // semver, no v prefix, from the form
 	Tags           []string // full replacement tag set
 	Description    string   // optional override for the package meta description
+	DisplayName    string   // optional display name; defaults to package name on creation
 	ArchiveSHA256  string   // archive blob from POST /archives
 	IconSHA256     string   // optional icon image blob from POST /images
 	ReviewRequired bool     // artifact_review=required
@@ -88,6 +89,10 @@ type PublishInput struct {
 // AddRef the archive → skill upsert → version insert → latest pointer →
 // tag association → optional icon binding (AddRef image, swap old ref).
 func (s *Skills) Publish(ctx context.Context, in PublishInput) (*store.Skill, *store.SkillVersion, error) {
+	displayName := strings.TrimSpace(in.DisplayName)
+	if utf8.RuneCountInString(displayName) > 64 {
+		return nil, nil, fmt.Errorf("%w: display_name must be at most 64 characters", ErrInvalidInput)
+	}
 	if !semver.IsValid("v" + in.Version) {
 		return nil, nil, fmt.Errorf("%w: version must be semver without v prefix", ErrInvalidInput)
 	}
@@ -174,8 +179,11 @@ func (s *Skills) Publish(ctx context.Context, in PublishInput) (*store.Skill, *s
 		if in.ReviewRequired {
 			status = store.SkillStatusPending
 		}
+		if displayName == "" {
+			displayName = meta.Name
+		}
 		sk = &store.Skill{
-			ID: store.NewID(), OwnerID: in.Owner.ID, Name: meta.Name,
+			ID: store.NewID(), OwnerID: in.Owner.ID, Name: meta.Name, DisplayName: displayName,
 			Official: in.Official, IconSHA256: iconSHA,
 			Status: status, CreatedAt: now, UpdatedAt: now,
 		}
@@ -208,6 +216,12 @@ func (s *Skills) Publish(ctx context.Context, in PublishInput) (*store.Skill, *s
 			return nil, nil, ErrVersionExists
 		}
 		return nil, nil, err
+	}
+	if displayName != "" {
+		if err := skills.UpdateDisplayName(ctx, sk.ID, displayName, now); err != nil {
+			return nil, nil, err
+		}
+		sk.DisplayName = displayName
 	}
 	if err := skills.UpdateAfterPublish(ctx, sk.ID, v.ID, description, now); err != nil {
 		return nil, nil, err
@@ -270,13 +284,13 @@ func (s *Skills) GetDetailByID(ctx context.Context, id string) (*SkillDetail, er
 
 func (s *Skills) detailBy(ctx context.Context, cond string, args ...any) (*SkillDetail, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT s.id, s.owner_id, s.name, s.summary, s.official, s.status,
+		`SELECT s.id, s.owner_id, s.name, s.display_name, s.summary, s.official, s.status,
 		        s.latest_version_id, s.icon_sha256, s.download_count, s.created_at, s.updated_at,
 		        u.username, u.nickname
 		 FROM skill s JOIN user u ON u.id = s.owner_id
 		 `+cond, args...)
 	d := &SkillDetail{SkillItem: SkillItem{Skill: &store.Skill{}}}
-	err := row.Scan(&d.Skill.ID, &d.Skill.OwnerID, &d.Skill.Name, &d.Skill.Summary,
+	err := row.Scan(&d.Skill.ID, &d.Skill.OwnerID, &d.Skill.Name, &d.Skill.DisplayName, &d.Skill.Summary,
 		&d.Skill.Official, &d.Skill.Status, &d.Skill.LatestVersionID, &d.Skill.IconSHA256,
 		&d.Skill.DownloadCount, &d.Skill.CreatedAt, &d.Skill.UpdatedAt,
 		&d.OwnerUsername, &d.OwnerNickname)
@@ -329,9 +343,9 @@ func (s *Skills) List(ctx context.Context, f ListFilter) (items []SkillItem, tot
 		where = append(where, `s.official = 1`)
 	}
 	if f.Query != "" {
-		where = append(where, `(s.name LIKE ? OR s.summary LIKE ?)`)
+		where = append(where, `(s.name LIKE ? OR s.display_name LIKE ? OR s.summary LIKE ?)`)
 		like := "%" + f.Query + "%"
-		args = append(args, like, like)
+		args = append(args, like, like, like)
 	}
 	if f.Tag != "" {
 		where = append(where,
@@ -358,7 +372,7 @@ func (s *Skills) List(ctx context.Context, f ListFilter) (items []SkillItem, tot
 		pageSize = 20
 	}
 	query := `
-		SELECT s.id, s.owner_id, s.name, s.summary, s.official, s.status,
+		SELECT s.id, s.owner_id, s.name, s.display_name, s.summary, s.official, s.status,
 		       s.latest_version_id, s.icon_sha256, s.download_count, s.created_at, s.updated_at,
 		       u.username, u.nickname, COALESCE(lv.version, '')
 		FROM skill s
@@ -378,7 +392,7 @@ func (s *Skills) List(ctx context.Context, f ListFilter) (items []SkillItem, tot
 	ids := []string{}
 	for rows.Next() {
 		it := SkillItem{Skill: &store.Skill{}}
-		if err := rows.Scan(&it.Skill.ID, &it.Skill.OwnerID, &it.Skill.Name,
+		if err := rows.Scan(&it.Skill.ID, &it.Skill.OwnerID, &it.Skill.Name, &it.Skill.DisplayName,
 			&it.Skill.Summary, &it.Skill.Official, &it.Skill.Status,
 			&it.Skill.LatestVersionID, &it.Skill.IconSHA256, &it.Skill.DownloadCount,
 			&it.Skill.CreatedAt, &it.Skill.UpdatedAt,
@@ -456,13 +470,22 @@ func (s *Skills) getSkill(ctx context.Context, id string) (*store.Skill, error) 
 // (§8.4 PUT /skills/{id}). Nil pointer/slice leaves the field unchanged;
 // icon "" clears the icon (releasing its blob ref), otherwise it must be an
 // uploaded image blob sha256.
-func (s *Skills) Update(ctx context.Context, actor *store.User, skillID string, summary, description *string, tags []string, icon *string) error {
+func (s *Skills) Update(ctx context.Context, actor *store.User, skillID string, summary, description *string, tags []string, icon, displayName *string) error {
 	sk, err := s.getSkill(ctx, skillID)
 	if err != nil {
 		return err
 	}
 	if err := canManage(actor, sk); err != nil {
 		return err
+	}
+	if displayName != nil {
+		name := strings.TrimSpace(*displayName)
+		if name == "" || utf8.RuneCountInString(name) > 64 {
+			return fmt.Errorf("%w: display_name must be 1 to 64 characters", ErrInvalidInput)
+		}
+		if err := store.NewSkillStore(s.db).UpdateDisplayName(ctx, skillID, name, store.Now()); err != nil {
+			return err
+		}
 	}
 	if summary != nil {
 		if utf8.RuneCountInString(*summary) > 1024 {

@@ -132,9 +132,10 @@ export function MySkillsPage() {
                 const st = statusView(s.status);
                 return (
                   <tr key={s.id}>
-                    <td className="mono">
-                      <Link to={`/s/${s.namespace}/${s.name}`}>{s.name}</Link>{" "}
+                    <td>
+                      <Link to={`/s/${s.namespace}/${s.name}`}>{s.display_name || s.name}</Link>{" "}
                       {s.official && <OfficialBadge />}
+                      <div className="skill-original-name">{s.name}</div>
                     </td>
                     <td className="mono">v{s.latest_version}</td>
                     <td>
@@ -169,7 +170,7 @@ export function MySkillsPage() {
         <div className="alert warn" style={{ marginTop: 18 }} key={s.id}>
           <span>!</span>
           <span>
-            <b>{s.name}</b> 正在等待管理员审核,审核通过后将公开展示。
+            <b>{s.display_name || s.name}</b> 正在等待管理员审核,审核通过后将公开展示。
           </span>
         </div>
       ))}

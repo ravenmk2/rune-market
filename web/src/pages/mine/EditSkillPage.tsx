@@ -5,6 +5,7 @@ import { skillsApi } from "../../api/skills";
 import type { MySkillItem } from "../../api/skills";
 import { imagesApi } from "../../api/images";
 import { ApiError } from "../../api/client";
+import { SkillIcon } from "../../components/SkillIcon";
 import { AvatarCropDialog } from "../../components/AvatarCropDialog";
 
 export function EditSkillPage() {
@@ -14,6 +15,7 @@ export function EditSkillPage() {
 
   const [item, setItem] = useState<MySkillItem | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [displayName, setDisplayName] = useState("");
   const [summary, setSummary] = useState("");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState("");
@@ -38,6 +40,7 @@ export function EditSkillPage() {
         if (found) {
           setTags(found.tags.join(", "));
           setSummary(found.summary);
+          setDisplayName(found.display_name || found.name);
           // 说明是版本级字段,从详情取当前最新版本预填
           skillsApi
             .detail(found.namespace, found.name)
@@ -54,6 +57,10 @@ export function EditSkillPage() {
   async function saveMeta(e: FormEvent) {
     e.preventDefault();
     if (!item) return;
+    if (!displayName.trim() || Array.from(displayName.trim()).length > 64) {
+      setError("展示名称需为 1–64 个字符");
+      return;
+    }
     setSaving(true);
     setSaved(false);
     setError("");
@@ -66,6 +73,7 @@ export function EditSkillPage() {
       await skillsApi.update(item.id, {
         tags: tagList,
         summary: summary.trim(),
+        display_name: displayName.trim(),
         description: description.trim(),
         icon: iconParam,
       });
@@ -73,6 +81,7 @@ export function EditSkillPage() {
         ...item,
         tags: tagList,
         summary: summary.trim(),
+        display_name: displayName.trim(),
         icon_url: icon ? icon.url : iconRemoved ? null : item.icon_url,
       });
       setIcon(null);
@@ -229,15 +238,20 @@ export function EditSkillPage() {
           <h2>基本信息</h2>
           <form onSubmit={saveMeta}>
             <div className="field">
+              <label htmlFor="f-display-name">展示名称</label>
+              <input
+                className="input"
+                id="f-display-name"
+                required
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+              />
+              <div className="hint">1–64 个字符；原名称：<span className="mono">{item.name}</span></div>
+            </div>
+            <div className="field">
               <label>图标</label>
               <div className="icon-field">
-                <div className="detail-icon">
-                  {iconUrl ? (
-                    <img src={iconUrl} alt="图标" />
-                  ) : (
-                    item.name.charAt(0).toUpperCase()
-                  )}
-                </div>
+                <SkillIcon url={iconUrl} className="detail-icon" />
                 <div style={{ display: "flex", gap: 10 }}>
                   <button
                     className="btn btn-outline btn-sm"
@@ -282,7 +296,7 @@ export function EditSkillPage() {
                 value={summary}
                 onChange={(e) => setSummary(e.target.value)}
               />
-              <div className="hint">展示在列表卡片与详情页头部</div>
+              <div className="hint">简介可用于搜索，不在技能列表中展示</div>
             </div>
             <div className="field">
               <label htmlFor="f-desc">说明</label>

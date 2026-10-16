@@ -318,7 +318,7 @@ func TestUpdateIcon(t *testing.T) {
 	icon := env.iconSHA(t)
 
 	// nil leaves the field unchanged
-	if err := env.skills.Update(ctx, env.owner, sk.ID, nil, nil, nil, nil); err != nil {
+	if err := env.skills.Update(ctx, env.owner, sk.ID, nil, nil, nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	d, _ := env.skills.GetDetailByID(ctx, sk.ID)
@@ -327,7 +327,7 @@ func TestUpdateIcon(t *testing.T) {
 	}
 
 	// set
-	if err := env.skills.Update(ctx, env.owner, sk.ID, nil, nil, nil, &icon); err != nil {
+	if err := env.skills.Update(ctx, env.owner, sk.ID, nil, nil, nil, &icon, nil); err != nil {
 		t.Fatal(err)
 	}
 	if got := env.blobRefs(t, icon); got != 2 {
@@ -336,7 +336,7 @@ func TestUpdateIcon(t *testing.T) {
 
 	// change: new gains a binding ref, old is released
 	icon2 := env.iconSHA(t)
-	if err := env.skills.Update(ctx, env.owner, sk.ID, nil, nil, nil, &icon2); err != nil {
+	if err := env.skills.Update(ctx, env.owner, sk.ID, nil, nil, nil, &icon2, nil); err != nil {
 		t.Fatal(err)
 	}
 	if got := env.blobRefs(t, icon); got != 1 {
@@ -347,7 +347,7 @@ func TestUpdateIcon(t *testing.T) {
 	}
 
 	// setting the same icon again is a no-op
-	if err := env.skills.Update(ctx, env.owner, sk.ID, nil, nil, nil, &icon2); err != nil {
+	if err := env.skills.Update(ctx, env.owner, sk.ID, nil, nil, nil, &icon2, nil); err != nil {
 		t.Fatal(err)
 	}
 	if got := env.blobRefs(t, icon2); got != 2 {
@@ -356,17 +356,17 @@ func TestUpdateIcon(t *testing.T) {
 
 	// unknown / wrong-kind icon rejected
 	bad := "2222222222222222222222222222222222222222222222222222222222222222"
-	if err := env.skills.Update(ctx, env.owner, sk.ID, nil, nil, nil, &bad); !errors.Is(err, ErrInvalidInput) {
+	if err := env.skills.Update(ctx, env.owner, sk.ID, nil, nil, nil, &bad, nil); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("unknown icon: %v", err)
 	}
 	archiveSHA := env.archiveSHA(t, "not-icon", "d")
-	if err := env.skills.Update(ctx, env.owner, sk.ID, nil, nil, nil, &archiveSHA); !errors.Is(err, ErrInvalidInput) {
+	if err := env.skills.Update(ctx, env.owner, sk.ID, nil, nil, nil, &archiveSHA, nil); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("archive as icon: %v", err)
 	}
 
 	// clear releases the binding ref
 	empty := ""
-	if err := env.skills.Update(ctx, env.owner, sk.ID, nil, nil, nil, &empty); err != nil {
+	if err := env.skills.Update(ctx, env.owner, sk.ID, nil, nil, nil, &empty, nil); err != nil {
 		t.Fatal(err)
 	}
 	if got := env.blobRefs(t, icon2); got != 1 {
@@ -468,7 +468,7 @@ func TestSetStatusAndPermissions(t *testing.T) {
 	if _, err := env.skills.SetStatus(ctx, other, sk.ID, "takedown"); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("expected forbidden, got %v", err)
 	}
-	if err := env.skills.Update(ctx, other, sk.ID, nil, nil, []string{"x"}, nil); !errors.Is(err, ErrForbidden) {
+	if err := env.skills.Update(ctx, other, sk.ID, nil, nil, []string{"x"}, nil, nil); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("expected forbidden, got %v", err)
 	}
 	if err := env.skills.Delete(ctx, other, sk.ID); !errors.Is(err, ErrForbidden) {
@@ -527,7 +527,7 @@ func TestPublishOfficialAndUpdateMeta(t *testing.T) {
 
 	// summary + current-version description are editable
 	sum, desc := "new summary", "new description"
-	if err := env.skills.Update(ctx, env.owner, sk.ID, &sum, &desc, nil, nil); err != nil {
+	if err := env.skills.Update(ctx, env.owner, sk.ID, &sum, &desc, nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	d, err = env.skills.GetDetail(ctx, "raven", "off")
@@ -547,7 +547,7 @@ func TestPublishOfficialAndUpdateMeta(t *testing.T) {
 	}
 
 	// nil fields leave everything unchanged; tags still replaceable
-	if err := env.skills.Update(ctx, env.owner, sk.ID, nil, nil, []string{"文档"}, nil); err != nil {
+	if err := env.skills.Update(ctx, env.owner, sk.ID, nil, nil, []string{"文档"}, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	d, _ = env.skills.GetDetail(ctx, "raven", "off")

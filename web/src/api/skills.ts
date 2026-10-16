@@ -19,6 +19,7 @@ export type SkillStatus = "published" | "pending" | "taken_down" | string;
 export interface SkillListItem {
   namespace: string;
   name: string;
+  display_name: string;
   summary: string;
   official: boolean;
   status: SkillStatus;
@@ -107,6 +108,7 @@ export interface ArchiveUpload {
 }
 
 export interface PublishSkillInput {
+  display_name: string;
   /** POST /archives 预上传得到的 sha256 */
   archive: string;
   version: string;
@@ -135,6 +137,7 @@ export const skillsApi = {
     api
       .post<{ skill: SkillDetail }>("/skills", {
         archive: input.archive,
+        display_name: input.display_name,
         version: input.version,
         tags: input.tags && input.tags.length > 0 ? input.tags : undefined,
         description: input.description || undefined,
@@ -144,7 +147,7 @@ export const skillsApi = {
 
   mine: () => api.get<ListResult<MySkillItem>>("/mine/skills"),
   /** 更新标签 / 简介 / 说明 / 图标(icon:"" 清除,缺省不变;summary 为制品级,description 作用于当前最新版本) */
-  update: (id: string, input: { tags?: string[]; summary?: string; description?: string; icon?: string }) =>
+  update: (id: string, input: { display_name?: string; tags?: string[]; summary?: string; description?: string; icon?: string }) =>
     api.put<void>(`/skills/${id}`, input),
   takedown: (id: string) => api.post<void>(`/skills/${id}/takedown`),
   restore: (id: string) => api.post<void>(`/skills/${id}/restore`),

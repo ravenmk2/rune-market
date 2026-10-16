@@ -3,10 +3,9 @@ import type { SkillListItem } from "../api/skills";
 import { OfficialBadge } from "./Badge";
 import { Tag } from "./Tag";
 import { formatCount, harnessLabel } from "../utils/format";
+import { SkillIcon } from "./SkillIcon";
 
-const TINTS = ["tint-a", "tint-b", "tint-c", "tint-d"];
-
-export function SkillCard({ skill, index = 0 }: { skill: SkillListItem; index?: number }) {
+export function SkillCard({ skill }: { skill: SkillListItem }) {
   const navigate = useNavigate();
   const harnessText =
     skill.harnesses && skill.harnesses.length > 0
@@ -14,21 +13,14 @@ export function SkillCard({ skill, index = 0 }: { skill: SkillListItem; index?: 
       : "通用";
 
   return (
-    <Link className="card" to={`/s/${skill.namespace}/${skill.name}`}>
+    <Link className="card skill-card" to={`/s/${skill.namespace}/${skill.name}`}>
       <div className="card-top">
-        {skill.icon_url ? (
-          <div className="card-icon">
-            <img src={skill.icon_url} alt="" loading="lazy" />
-          </div>
-        ) : (
-          <div className={`card-icon ${TINTS[index % TINTS.length]}`}>
-            {skill.name.charAt(0).toUpperCase()}
-          </div>
-        )}
+        <SkillIcon url={skill.icon_url} lazy />
         <div>
           <div className="card-title">
-            {skill.name} {skill.official && <OfficialBadge />}
+            {skill.display_name || skill.name} {skill.official && <OfficialBadge />}
           </div>
+          <div className="skill-original-name">{skill.name}</div>
           <div className="card-owner">
             <span
               className="owner-link"
@@ -44,7 +36,6 @@ export function SkillCard({ skill, index = 0 }: { skill: SkillListItem; index?: 
           </div>
         </div>
       </div>
-      <p className="card-desc">{skill.summary}</p>
       {skill.tags.length > 0 && (
         <div className="stack">
           {skill.tags.map((t) => (
