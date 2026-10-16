@@ -41,6 +41,18 @@ export function MarkdownView({ markdown }: { markdown: string }) {
   useEffect(() => {
     const root = ref.current;
     if (!root) return;
+    // Wrap both Markdown and raw HTML tables after sanitizing. Keep the table
+    // semantics while giving wide content a keyboard-accessible scroll area.
+    for (const table of root.querySelectorAll("table")) {
+      if (table.parentElement?.classList.contains("md-table-scroll")) continue;
+      const wrapper = document.createElement("div");
+      wrapper.className = "md-table-scroll";
+      wrapper.tabIndex = 0;
+      wrapper.setAttribute("role", "region");
+      wrapper.setAttribute("aria-label", "表格，可横向滚动");
+      table.before(wrapper);
+      wrapper.append(table);
+    }
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
       acceptNode: (node) =>
         HEX_RE.test(node.nodeValue ?? "") && !node.parentElement?.closest("pre,code")
