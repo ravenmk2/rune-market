@@ -116,7 +116,7 @@ export function MyDesignsPage() {
         </div>
       ) : (
         <div className="panel" style={{ marginTop: 24, overflowX: "auto" }}>
-          <table className="table">
+          <table className="table responsive-table">
             <thead>
               <tr>
                 <th>名称</th>
@@ -132,7 +132,7 @@ export function MyDesignsPage() {
                 const st = statusView(d.status);
                 return (
                   <tr key={d.id}>
-                    <td>
+                    <td data-label="名称">
                       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                         <span className="thumb-xs">
                           {d.preview_thumb_url ? (
@@ -159,13 +159,13 @@ export function MyDesignsPage() {
                         </span>
                       </div>
                     </td>
-                    <td className="mono">v{d.latest_version}</td>
-                    <td>
+                    <td data-label="最新版本" className="mono">v{d.latest_version}</td>
+                    <td data-label="状态">
                       <span className={`status-dot ${st.cls}`}>{st.label}</span>
                     </td>
-                    <td>{formatCount(d.download_count)}</td>
-                    <td className="muted">{formatDate(d.updated_at)}</td>
-                    <td style={{ whiteSpace: "nowrap" }}>
+                    <td data-label="下载量">{formatCount(d.download_count)}</td>
+                    <td data-label="更新时间" className="muted">{formatDate(d.updated_at)}</td>
+                    <td data-label="操作" style={{ whiteSpace: "nowrap" }}>
                       <Link className="btn btn-outline btn-sm" to="/publish/design">
                         新版
                       </Link>{" "}

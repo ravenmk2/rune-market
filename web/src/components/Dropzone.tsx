@@ -31,6 +31,16 @@ export function Dropzone({ accept, title, sub, disabled, onFile }: DropzoneProps
   return (
     <div
       className="dropzone"
+      role="button"
+      tabIndex={disabled ? -1 : 0}
+      aria-disabled={disabled}
+      aria-label={title}
+      onKeyDown={(e) => {
+        if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          if (!disabled) inputRef.current?.click();
+        }
+      }}
       style={over ? { borderColor: "var(--accent)", background: "#FDFBF8" } : undefined}
       onClick={() => !disabled && inputRef.current?.click()}
       onDragOver={(e) => {
@@ -46,6 +56,7 @@ export function Dropzone({ accept, title, sub, disabled, onFile }: DropzoneProps
         ref={inputRef}
         type="file"
         accept={accept}
+        disabled={disabled}
         style={{ display: "none" }}
         onChange={pick}
       />

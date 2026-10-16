@@ -205,21 +205,23 @@ export function SettingsPage() {
             />
           </div>
           <div className="field" style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span
+            <button type="button"
+              aria-label="允许匿名浏览"
               className={`toggle${anonBrowse ? " on" : ""}`}
               role="switch"
               aria-checked={anonBrowse}
               onClick={() => setAnonBrowse(!anonBrowse)}
-            ></span>
+            />
             <span>允许匿名浏览</span>
           </div>
           <div className="field" style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span
+            <button type="button"
+              aria-label="允许匿名下载"
               className={`toggle${anonDownload ? " on" : ""}`}
               role="switch"
               aria-checked={anonDownload}
               onClick={() => setAnonDownload(!anonDownload)}
-            ></span>
+            />
             <span>允许匿名下载</span>
           </div>
           <div className="field" style={{ marginBottom: 0 }}>

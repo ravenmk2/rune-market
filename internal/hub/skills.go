@@ -26,6 +26,10 @@ var (
 	ErrInvalidInput  = errors.New("hub: invalid input")
 )
 
+func (s *Skills) Tags(ctx context.Context) ([]string, error) {
+	return store.NewTagStore(s.db, s.dialect).PublishedSkillTags(ctx)
+}
+
 // SkillItem is the list-card read model (contract item shape).
 type SkillItem struct {
 	Skill         *store.Skill

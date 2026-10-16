@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 
 interface TreeNode {
   name: string;
@@ -71,9 +71,11 @@ function FileIcon() {
 
 /** 扁平路径列表建树,目录默认全部折叠、点击展开(§9:附属文件原样出现在树中) */
 export function FileTree({ paths, active, onSelect }: FileTreeProps) {
+  const navId = useId();
+  const [expanded, setExpanded] = useState(false);
   const tree = useMemo(() => buildTree(paths), [paths]);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() =>
-    collectDirs(tree, new Set()),
+    new Set([...collectDirs(tree, new Set())].filter((path) => !active?.startsWith(path + "/"))),
   );
 
   function toggle(path: string) {
@@ -92,22 +94,24 @@ export function FileTree({ paths, active, onSelect }: FileTreeProps) {
           <li key={n.path}>
             {n.isDir ? (
               <>
-                <span className="node" onClick={() => toggle(n.path)}>
+                <button type="button" className="node" aria-expanded={!collapsed.has(n.path)} title={n.path} onClick={() => toggle(n.path)}>
                   <span className="tw">{collapsed.has(n.path) ? "▸" : "▾"}</span>
                   <FolderIcon />
                   {n.name}/
-                </span>
+                </button>
                 {!collapsed.has(n.path) && renderNodes(n.children)}
               </>
             ) : (
-              <span
+              <button type="button"
                 className={`node${active === n.path ? " active" : ""}`}
-                onClick={() => onSelect(n.path)}
+                aria-current={active === n.path ? "true" : undefined}
+                title={n.path}
+                onClick={() => { onSelect(n.path); setExpanded(false); }}
               >
                 <span className="tw"></span>
                 <FileIcon />
                 {n.name}
-              </span>
+              </button>
             )}
           </li>
         ))}
@@ -115,5 +119,9 @@ export function FileTree({ paths, active, onSelect }: FileTreeProps) {
     );
   }
 
-  return <aside className="filetree">{renderNodes(tree)}</aside>;
+  return <aside className="filetree">
+    <button type="button" className="filetree-toggle" aria-expanded={expanded} aria-controls={navId}
+      onClick={() => setExpanded(!expanded)}>文件目录 <span>{expanded ? "收起" : "展开"}</span></button>
+    <nav id={navId} className={`filetree-nav${expanded ? " open" : ""}`} aria-label="包内文件">{renderNodes(tree)}</nav>
+  </aside>;
 }

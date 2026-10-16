@@ -45,6 +45,10 @@ func NewDesigns(db *sql.DB, dialect string, blobs *blob.Storage) *Designs {
 // DB exposes the connection pool for handlers that need direct access.
 func (s *Designs) DB() *sql.DB { return s.db }
 
+func (s *Designs) Tags(ctx context.Context) ([]string, error) {
+	return store.NewTagStore(s.db, s.dialect).PublishedDesignTags(ctx)
+}
+
 // DesignPublishInput is one publish request (§8.4).
 type DesignPublishInput struct {
 	Owner          *store.User

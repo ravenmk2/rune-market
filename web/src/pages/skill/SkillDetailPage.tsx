@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Link, NavLink, Route, Routes, useParams } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, NavLink, Route, Routes, useParams, useLocation } from "react-router-dom";
 import { skillsApi, skillDownloadUrl } from "../../api/skills";
 import type { FileContent, FileEntry, SkillDetail, VersionMeta } from "../../api/skills";
 import { ApiError } from "../../api/client";
@@ -11,6 +11,7 @@ import { PermList } from "../../components/PermList";
 import { FileTree } from "../../components/FileTree";
 import { CodeView } from "../../components/CodeView";
 import { MarkdownView } from "../../components/MarkdownView";
+import { MarkdownModeSwitch } from "../../components/MarkdownModeSwitch";
 import { useAuth } from "../../context/AuthContext";
 import { skillPublishVersionPath } from "../../utils/paths";
 import { useTitle } from "../../hooks/useTitle";
@@ -22,6 +23,8 @@ function tabClass({ isActive }: { isActive: boolean }) {
 
 export function SkillDetailPage() {
   const { ns = "", name = "" } = useParams();
+  const location = useLocation();
+  const marketUrl = typeof location.state?.marketUrl === "string" && /^\/(?:designs)?(?:\?|$)/.test(location.state.marketUrl) ? location.state.marketUrl : "/";
   const { user } = useAuth();
   const [skill, setSkill] = useState<SkillDetail | null>(null);
   const [versions, setVersions] = useState<VersionMeta[]>([]);
@@ -79,7 +82,7 @@ export function SkillDetailPage() {
   return (
     <main className="container">
       <div className="crumbs">
-        <Link to="/">浏览</Link> / <Link to="/">Skills</Link> / {name}
+        <Link to="/">浏览</Link> / <Link to={marketUrl}>Skills</Link> / {name}
       </div>
 
       <section className="detail-head">
@@ -137,13 +140,13 @@ export function SkillDetailPage() {
       </section>
 
       <nav className="tabs">
-        <NavLink to={base} end className={tabClass}>
+        <NavLink state={{ marketUrl }} to={base} end className={tabClass}>
           概览
         </NavLink>
-        <NavLink to={`${base}/files`} className={tabClass}>
+        <NavLink state={{ marketUrl }} to={`${base}/files`} className={tabClass}>
           文件{current && <span className="count">{current.file_count}</span>}
         </NavLink>
-        <NavLink to={`${base}/versions`} className={tabClass}>
+        <NavLink state={{ marketUrl }} to={`${base}/versions`} className={tabClass}>
           版本<span className="count">{versions.length}</span>
         </NavLink>
       </nav>
@@ -280,6 +283,7 @@ function OverviewTab({ skill, version }: { skill: SkillDetail; version?: Version
 /* ---------- 文件 tab:目录树 + 文本预览 ---------- */
 
 function FilesTab({ ns, name, version }: { ns: string; name: string; version: string }) {
+  const previewHead = useRef<HTMLDivElement>(null);
   const [files, setFiles] = useState<FileEntry[] | null>(null);
   const [active, setActive] = useState<string | null>(null);
   const [content, setContent] = useState<FileContent | null>(null);
@@ -355,26 +359,14 @@ function FilesTab({ ns, name, version }: { ns: string; name: string; version: st
           onSelect={(p) => {
             setActive(p);
             setMdMode("preview");
+            requestAnimationFrame(() => previewHead.current?.focus());
           }}
         />
         <div className="file-preview">
-          <div className="file-preview-head">
+          <div className="file-preview-head" ref={previewHead} tabIndex={-1}>
             <span className="path">{active}</span>
             {isMd && (
-              <span className="preview-switch">
-                <span
-                  className={mdMode === "preview" ? "active" : ""}
-                  onClick={() => setMdMode("preview")}
-                >
-                  预览
-                </span>
-                <span
-                  className={mdMode === "raw" ? "active" : ""}
-                  onClick={() => setMdMode("raw")}
-                >
-                  Raw
-                </span>
-              </span>
+              <MarkdownModeSwitch mode={mdMode} onChange={setMdMode} />
             )}
           </div>
           {content ? (

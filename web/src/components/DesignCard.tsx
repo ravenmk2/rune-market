@@ -1,12 +1,12 @@
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import type { DesignListItem } from "../api/designs";
 import { OfficialBadge } from "./Badge";
 import { DownloadCount } from "./DownloadCount";
 
 export function DesignCard({ design }: { design: DesignListItem }) {
-  const navigate = useNavigate();
+  const location = useLocation();
   return (
-    <Link className="card" to={`/d/${design.namespace}/${design.name}`}>
+    <article className="card">
       <div className="card-thumb">
         {design.preview_thumb_url ? (
           <img src={design.preview_thumb_url} alt={`${design.name} 预览`} loading="lazy" />
@@ -17,19 +17,12 @@ export function DesignCard({ design }: { design: DesignListItem }) {
       <div className="card-top">
         <div>
           <div className="card-title">
-            {design.name} {design.official && <OfficialBadge />}
+            <Link className="card-main-link" to={`/d/${design.namespace}/${design.name}`} state={{ marketUrl: location.pathname + location.search }}>{design.name}</Link> {design.official && <OfficialBadge />}
           </div>
           <div className="card-owner">
-            <span
-              className="owner-link"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                navigate(`/u/${design.owner.username}`);
-              }}
-            >
+            <Link className="owner-link" to={`/u/${design.owner.username}`}>
               {design.owner.nickname || design.owner.username}
-            </span>{" "}
+            </Link>{" "}
             · v{design.latest_version}
           </div>
         </div>
@@ -40,6 +33,6 @@ export function DesignCard({ design }: { design: DesignListItem }) {
         <span className="spacer"></span>
         <DownloadCount count={design.download_count} />
       </div>
-    </Link>
+    </article>
   );
 }

@@ -666,11 +666,10 @@ h1, h2, h3 { font-weight: 600; }
   .preview-upload-grid { grid-template-columns: 1fr; }
   .topbar-inner { height: auto; min-height: 60px; padding: 12px 16px; flex-wrap: wrap; gap: 12px; }
   .topbar-inner > .nav { order: 3; width: 100%; }
-  .design-detail .detail-head { flex-wrap: wrap; }
-  .design-detail .detail-head > div:not(.detail-icon):not(.detail-actions) { flex: 1; min-width: 0; }
-  .design-detail .detail-head h1 { font-size: 22px; overflow-wrap: anywhere; }
-  .design-detail .detail-actions { margin-left: 0; flex-wrap: wrap; width: 100%; }
-  .design-detail .layout-detail > * { min-width: 0; }
+  .detail-head { flex-wrap: wrap; }
+  .detail-head > div:not(.detail-icon):not(.detail-actions) { flex: 1; min-width: 0; }
+  .detail-head h1 { font-size: 22px; overflow-wrap: anywhere; }
+  .detail-actions { margin-left: 0; flex-wrap: wrap; width: 100%; }
 }
 
 .preview-head h2 { margin-bottom: 0; }
@@ -1376,3 +1375,83 @@ h1, h2, h3 { font-weight: 600; }
 .version-options { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .publish-metadata { border-top: 1px solid var(--line); padding-top: 16px; margin-bottom: 20px; }
 .publish-metadata summary { cursor: pointer; font-size: 14px; font-weight: 600; margin-bottom: 18px; }
+
+/* Shared layouts keep long artifact names, paths and controls inside their column. */
+.grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid > *, .layout-detail > *, .overview-layout > * { min-width: 0; }
+.card-title { display: block; overflow-wrap: anywhere; line-height: 1.5; }
+.card { position: relative; }
+.card-main-link::after { content: ""; position: absolute; inset: 0; border-radius: var(--radius); }
+.card .owner-link { position: relative; z-index: 1; }
+.card:focus-within { border-color: var(--accent); }
+.card-title .badge-official { margin-left: 6px; vertical-align: middle; white-space: nowrap; }
+.card-top > div:last-child { min-width: 0; flex: 1; }
+.card .stack, .card-foot > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.chip { max-width: 100%; overflow-wrap: anywhere; }
+.detail-head > div:not(.detail-icon):not(.detail-actions) { flex: 1; min-width: 0; }
+.detail-head h1, .crumbs, .meta-list .v, .check .c-detail { overflow-wrap: anywhere; }
+.detail-actions { max-width: 100%; flex-wrap: wrap; }
+.table-panel { overflow-x: auto; }
+.responsive-table th { white-space: nowrap; }
+.responsive-table td:first-child { overflow-wrap: anywhere; }
+.status-dot { white-space: nowrap; }
+.status-dot::before { flex-shrink: 0; }
+.text-button { border: 0; padding: 2px 0; background: transparent; font: inherit; color: var(--accent-deep); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.filter-notice { margin: -12px 0 20px; color: var(--muted); font-size: 13px; }
+button:focus-visible, a:focus-visible, [role="button"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.dropzone[aria-disabled="true"] { opacity: .6; cursor: default; }
+.validation-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin-top: 12px; font-size: 13px; color: var(--muted); }
+.validation-summary.has-error { color: var(--err); }
+.validation-details { scroll-margin-top: 120px; }
+.validation-details:focus { outline: 2px solid var(--accent); outline-offset: 3px; }
+.fileview { grid-template-columns: 250px minmax(0, 1fr); }
+.filetree .node { width: 100%; border: 0; background: transparent; font: inherit; text-align: left; }
+.filetree-toggle { display: none; }
+.filetree-nav { display: block; }
+.file-preview-head .path { flex: 1; }
+.toggle { border: 0; flex-shrink: 0; }
+.icon-field > div { flex-wrap: wrap; }
+
+@media (max-width: 960px) {
+  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  .detail-head { flex-wrap: wrap; }
+  .detail-actions { width: 100%; margin-left: 0; }
+  .fileview { grid-template-columns: minmax(0, 1fr); }
+  .filetree { border-right: 0; border-bottom: 1px solid var(--line); border-radius: var(--radius) var(--radius) 0 0; padding: 0; }
+  .filetree-toggle { display: flex; justify-content: space-between; gap: 12px; width: 100%; border: 0; padding: 14px 18px; background: transparent; font: inherit; text-align: left; color: var(--ink); cursor: pointer; }
+  .filetree-toggle span { color: var(--accent-deep); }
+  .filetree-nav { display: none; padding: 0 10px 12px; max-height: 280px; overflow: auto; }
+  .filetree-nav.open { display: block; }
+}
+@media (max-width: 640px) {
+  .container { padding: 0 18px; }
+  .grid { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .card { padding: 18px; }
+  .hero { padding-top: 28px; }
+  .hero h1 { font-size: 28px; }
+  .filter-row { gap: 8px; }
+  .chip { min-height: 34px; }
+  .admin-main { padding: 24px 18px 40px; }
+  .admin-side { min-width: 0; }
+  .admin-side a { flex-shrink: 0; }
+  .field-2col { grid-template-columns: minmax(0, 1fr); }
+  .todo-row { flex-wrap: wrap; }
+  .todo-row .btn { margin-left: auto; }
+  .meta-list .row { min-width: 0; }
+  .meta-list .v { min-width: 0; }
+  .responsive-table { display: block; }
+  .responsive-table thead { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .responsive-table tbody { display: block; }
+  .responsive-table tbody tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; padding: 18px; border-bottom: 1px solid var(--line); }
+  .responsive-table tbody tr:last-child { border-bottom: 0; }
+  .responsive-table tbody td { display: block; min-width: 0; padding: 0; border: 0; white-space: normal !important; }
+  .responsive-table tbody td::before { content: attr(data-label); display: block; margin-bottom: 4px; color: var(--muted); font: 12px var(--sans); }
+  .responsive-table tbody td:first-child { grid-column: 1 / -1; }
+  .responsive-table tbody td:last-child { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .responsive-table tbody td:last-child::before { width: 100%; }
+  .responsive-table tbody td[colspan] { grid-column: 1 / -1; }
+  .responsive-table td .btn { min-height: 36px; }
+  .footer { flex-wrap: wrap; gap: 10px 16px; }
+}

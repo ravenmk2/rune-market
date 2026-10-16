@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import type { SkillListItem } from "../api/skills";
 import { OfficialBadge } from "./Badge";
 import { Tag } from "./Tag";
@@ -7,32 +7,25 @@ import { DownloadCount } from "./DownloadCount";
 import { SkillIcon } from "./SkillIcon";
 
 export function SkillCard({ skill }: { skill: SkillListItem }) {
-  const navigate = useNavigate();
+  const location = useLocation();
   const harnessText =
     skill.harnesses && skill.harnesses.length > 0
       ? skill.harnesses.map(harnessLabel).join(" · ")
       : "通用";
 
   return (
-    <Link className="card skill-card" to={`/s/${skill.namespace}/${skill.name}`}>
+    <article className="card skill-card">
       <div className="card-top">
         <SkillIcon url={skill.icon_url} lazy />
         <div>
           <div className="card-title">
-            {skill.display_name || skill.name} {skill.official && <OfficialBadge />}
+            <Link className="card-main-link" to={`/s/${skill.namespace}/${skill.name}`} state={{ marketUrl: location.pathname + location.search }}>{skill.display_name || skill.name}</Link> {skill.official && <OfficialBadge />}
           </div>
           <div className="skill-original-name">{skill.name}</div>
           <div className="card-owner">
-            <span
-              className="owner-link"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                navigate(`/u/${skill.owner.username}`);
-              }}
-            >
+            <Link className="owner-link" to={`/u/${skill.owner.username}`}>
               {skill.owner.nickname || skill.owner.username}
-            </span>{" "}
+            </Link>{" "}
             · v{skill.latest_version}
           </div>
         </div>
@@ -49,6 +42,6 @@ export function SkillCard({ skill }: { skill: SkillListItem }) {
         <span className="spacer"></span>
         <DownloadCount count={skill.download_count} />
       </div>
-    </Link>
+    </article>
   );
 }

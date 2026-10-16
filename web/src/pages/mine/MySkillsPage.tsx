@@ -117,7 +117,7 @@ export function MySkillsPage() {
         </div>
       ) : (
         <div className="panel" style={{ marginTop: 24, overflowX: "auto" }}>
-          <table className="table">
+          <table className="table responsive-table">
             <thead>
               <tr>
                 <th>名称</th>
@@ -133,18 +133,18 @@ export function MySkillsPage() {
                 const st = statusView(s.status);
                 return (
                   <tr key={s.id}>
-                    <td>
+                    <td data-label="名称">
                       <Link to={`/s/${s.namespace}/${s.name}`}>{s.display_name || s.name}</Link>{" "}
                       {s.official && <OfficialBadge />}
                       <div className="skill-original-name">{s.name}</div>
                     </td>
-                    <td className="mono">v{s.latest_version}</td>
-                    <td>
+                    <td data-label="最新版本" className="mono">v{s.latest_version}</td>
+                    <td data-label="状态">
                       <span className={`status-dot ${st.cls}`}>{st.label}</span>
                     </td>
-                    <td>{formatCount(s.download_count)}</td>
-                    <td className="muted">{formatDate(s.updated_at)}</td>
-                    <td style={{ whiteSpace: "nowrap" }}>
+                    <td data-label="下载量">{formatCount(s.download_count)}</td>
+                    <td data-label="更新时间" className="muted">{formatDate(s.updated_at)}</td>
+                    <td data-label="操作" style={{ whiteSpace: "nowrap" }}>
                       <Link className="btn btn-outline btn-sm" to={skillPublishVersionPath(s.namespace, s.name)}>
                         发布新版本
                       </Link>{" "}

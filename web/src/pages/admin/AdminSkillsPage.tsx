@@ -68,7 +68,7 @@ export function AdminSkillsPage() {
       <p className="sub">管理全站 Skill 制品,可标记官方或下架</p>
 
       <div className="alert ok" style={{ marginBottom: 18 }}>
-        官方制品会在列表页置顶并带 Official 徽标,命名空间归属 RuneMarket。
+        标记为官方的制品会显示 Official 徽标。
       </div>
 
       <div className="filter-row" style={{ margin: "0 0 18px" }}>
@@ -93,8 +93,8 @@ export function AdminSkillsPage() {
         </div>
       )}
 
-      <section className="panel">
-        <table className="table">
+      <section className="panel table-panel">
+        <table className="table responsive-table">
           <thead>
             <tr>
               <th>名称</th>
@@ -124,22 +124,22 @@ export function AdminSkillsPage() {
                 const busy = acting === s.id;
                 return (
                   <tr key={s.id}>
-                    <td>
+                    <td data-label="名称">
                       <Link to={`/s/${s.namespace}/${s.name}`}>
                         {s.display_name || s.name}
                       </Link>{" "}
                       {s.official && <OfficialBadge />}
                       <div className="skill-original-name">{s.namespace}/{s.name}</div>
                     </td>
-                    <td className="muted">
+                    <td data-label="发布者" className="muted">
                       {s.owner.nickname || s.owner.username} (@{s.owner.username})
                     </td>
-                    <td className="mono">v{s.latest_version}</td>
-                    <td className="muted">{formatCount(s.download_count)}</td>
-                    <td style={{ whiteSpace: "nowrap" }}>
+                    <td data-label="最新版本" className="mono">v{s.latest_version}</td>
+                    <td data-label="下载量" className="muted">{formatCount(s.download_count)}</td>
+                    <td data-label="状态" style={{ whiteSpace: "nowrap" }}>
                       <span className={`status-dot ${st.cls}`}>{st.label}</span>
                     </td>
-                    <td style={{ whiteSpace: "nowrap" }}>
+                    <td data-label="操作" style={{ whiteSpace: "nowrap" }}>
                       {s.status === "pending" && (
                         <>
                           <button

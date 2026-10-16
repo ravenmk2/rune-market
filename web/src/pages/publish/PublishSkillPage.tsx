@@ -9,6 +9,7 @@ import { useAuth } from "../../context/AuthContext";
 import { SkillIcon } from "../../components/SkillIcon";
 import { Dropzone } from "../../components/Dropzone";
 import { CheckList } from "../../components/CheckList";
+import { ValidationSummary } from "../../components/ValidationSummary";
 import { HarnessChip } from "../../components/HarnessChip";
 import { PermList } from "../../components/PermList";
 import { AvatarCropDialog } from "../../components/AvatarCropDialog";
@@ -169,14 +170,17 @@ function PublishSkillForm({ namespace, skillName }: { namespace: string; skillNa
     }
     if (!isValidVersion(version.trim())) {
       setError("版本号需为语义化版本,如 1.0.0");
+      document.getElementById("f-version")?.focus();
       return;
     }
     if (isNewVersion && highest && compareVersions(version.trim(), highest) <= 0) {
       setError(`新版本必须高于当前最高版本 ${highest}`);
+      document.getElementById("f-version")?.focus();
       return;
     }
     if (!displayName.trim() || Array.from(displayName.trim()).length > 64) {
       setError("展示名称需为 1–64 个字符");
+      document.getElementById("f-display-name")?.focus();
       return;
     }
     setError("");
@@ -280,6 +284,7 @@ function PublishSkillForm({ namespace, skillName }: { namespace: string; skillNa
                 sub="根目录须包含 SKILL.md,大小上限 20 MB"
                 onFile={onFile}
               />
+              <ValidationSummary checks={report?.checks} busy={validating} error={validateError} blocked={!!existingSkill} detailsId="publish-checks" />
               <div
                 className="hint"
                 style={{
@@ -441,7 +446,7 @@ function PublishSkillForm({ namespace, skillName }: { namespace: string; skillNa
                 <code className="mono">.tar.gz</code>
               </li>
               <li style={{ margin: "6px 0" }}>SKILL.md 必须位于压缩包根目录</li>
-              <li style={{ margin: "6px 0" }}>规范 6 个字段做硬性校验,厂商扩展字段原样透传保留</li>
+              <li style={{ margin: "6px 0" }}>上传后会检查文件结构与必填信息，并保留扩展字段</li>
               <li style={{ margin: "6px 0" }}>制品名在你的命名空间下唯一</li>
               <li style={{ margin: "6px 0" }}>
                 更新已有技能请使用“发布新版本”，历史版本会保留，可在详情页切换
@@ -451,7 +456,7 @@ function PublishSkillForm({ namespace, skillName }: { namespace: string; skillNa
         </div>
 
         <aside>
-          <div className="panel panel-pad">
+          <div className="panel panel-pad validation-details" id="publish-checks" tabIndex={-1}>
             <h2>校验结果</h2>
             {validating && <p className="muted">校验中…</p>}
             {validateError && (

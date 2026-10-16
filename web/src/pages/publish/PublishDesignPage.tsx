@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { designsApi } from "../../api/designs";
@@ -9,6 +9,7 @@ import { ApiError } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import { Dropzone } from "../../components/Dropzone";
 import { CheckList } from "../../components/CheckList";
+import { ValidationSummary } from "../../components/ValidationSummary";
 import { formatBytes } from "../../utils/format";
 
 const NAME_RE = /^[a-z0-9](-?[a-z0-9])*$/;
@@ -27,6 +28,8 @@ export function PublishDesignPage() {
   const [content, setContent] = useState<string | null>(null);
   const [report, setReport] = useState<DesignValidateReport | null>(null);
   const [validating, setValidating] = useState(false);
+  const [validateError, setValidateError] = useState("");
+  const uploadSequence = useRef(0);
   const [name, setName] = useState("");
   const [version, setVersion] = useState("0.1.0");
   const [tags, setTags] = useState("");
@@ -39,19 +42,23 @@ export function PublishDesignPage() {
   const [error, setError] = useState("");
 
   async function onFile(f: File) {
+    const sequence = ++uploadSequence.current;
     setFile(f);
     setReport(null);
     setContent(null);
     setError("");
+    setValidateError("");
     setValidating(true);
     try {
       const text = await f.text();
+      if (sequence !== uploadSequence.current) return;
       setContent(text);
-      setReport(await designsApi.validate(name.trim(), text));
+      const nextReport = await designsApi.validate(name.trim(), text);
+      if (sequence === uploadSequence.current) setReport(nextReport);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "校验请求失败,请重试");
+      if (sequence === uploadSequence.current) setValidateError(e instanceof ApiError ? e.message : "校验请求失败,请重试");
     } finally {
-      setValidating(false);
+      if (sequence === uploadSequence.current) setValidating(false);
     }
   }
 
@@ -79,14 +86,17 @@ export function PublishDesignPage() {
     if (!canSubmit) return;
     if (!NAME_RE.test(name.trim()) || name.trim().length > 64) {
       setError("名称需为小写字母、数字或连字符,且不能以连字符开头/结尾(≤64 字符)");
+      document.getElementById("f-name")?.focus();
       return;
     }
     if (!SEMVER_RE.test(version.trim())) {
       setError("版本号需为语义化版本,如 1.0.0");
+      document.getElementById("f-version")?.focus();
       return;
     }
     if (!summary.trim()) {
       setError("请填写一句话简介");
+      document.getElementById("f-desc")?.focus();
       return;
     }
     if (!file || content === null || !report) {
@@ -124,7 +134,7 @@ export function PublishDesignPage() {
       <main className="container">
         <section className="page-head">
           <h1>发布</h1>
-          <p className="sub">上传后服务器将自动进行格式与安全校验,通过即公开发布。</p>
+          <p className="sub">上传设计文档，添加预览并填写信息，校验通过后发布。</p>
         </section>
         <div className="alert warn" style={{ marginTop: 20 }}>
           <span>!</span>
@@ -140,7 +150,7 @@ export function PublishDesignPage() {
     <main className="container">
       <section className="page-head">
         <h1>发布</h1>
-        <p className="sub">上传后服务器将自动进行格式与安全校验,通过即公开发布。</p>
+        <p className="sub">上传设计文档，添加预览并填写信息，校验通过后发布。</p>
       </section>
 
       <nav className="tabs">
@@ -152,6 +162,7 @@ export function PublishDesignPage() {
         <div>
           <div className="panel panel-pad">
             <Dropzone
+              disabled={publishing}
               accept=".md,.markdown,text/markdown,text/plain"
               title={
                 file
@@ -161,6 +172,7 @@ export function PublishDesignPage() {
               sub="单个 .md 文件,大小上限 1 MB"
               onFile={onFile}
             />
+            <ValidationSummary checks={report?.checks} busy={validating} error={validateError} detailsId="publish-checks" />
 
             <form style={{ marginTop: 22 }} onSubmit={submit}>
               <div className="field">
@@ -294,10 +306,11 @@ export function PublishDesignPage() {
         </div>
 
         <aside>
-          <div className="panel panel-pad">
+          <div className="panel panel-pad validation-details" id="publish-checks" tabIndex={-1}>
             <h2>校验结果</h2>
             {validating && <p className="muted">校验中…</p>}
-            {!validating && !report && (
+            {validateError && <div className="alert err" role="alert">{validateError}</div>}
+            {!validating && !report && !validateError && (
               <p className="muted" style={{ fontSize: 13.5 }}>
                 选择 .md 文件后将自动开始校验。
               </p>

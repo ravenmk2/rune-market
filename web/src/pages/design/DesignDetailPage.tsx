@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, NavLink, Route, Routes, useParams } from "react-router-dom";
+import { Link, NavLink, Route, Routes, useParams, useLocation } from "react-router-dom";
 import { designsApi, designDownloadUrl } from "../../api/designs";
 import type { DesignDetail, DesignVersionMeta, PreviewTheme } from "../../api/designs";
 import { previewThemes, previewThemeLabels, selectDesignPreview } from "../../utils/designPreviews";
@@ -10,6 +10,7 @@ import { useTitle } from "../../hooks/useTitle";
 import { PreviewSwitch } from "../../components/PreviewSwitch";
 import type { PreviewMode } from "../../components/PreviewSwitch";
 import { MarkdownView } from "../../components/MarkdownView";
+import { MarkdownModeSwitch } from "../../components/MarkdownModeSwitch";
 import { CodeView } from "../../components/CodeView";
 import { formatCount, formatDate, shortSha } from "../../utils/format";
 
@@ -19,6 +20,8 @@ function tabClass({ isActive }: { isActive: boolean }) {
 
 export function DesignDetailPage() {
   const { ns = "", name = "" } = useParams();
+  const location = useLocation();
+  const marketUrl = typeof location.state?.marketUrl === "string" && /^\/(?:designs)?(?:\?|$)/.test(location.state.marketUrl) ? location.state.marketUrl : "/designs";
   const [design, setDesign] = useState<DesignDetail | null>(null);
   const [versions, setVersions] = useState<DesignVersionMeta[]>([]);
   const [selectedVer, setSelectedVer] = useState("");
@@ -72,7 +75,7 @@ export function DesignDetailPage() {
   return (
     <main className="container design-detail">
       <div className="crumbs">
-        <Link to="/">浏览</Link> / <Link to="/designs">DESIGN.md</Link> / {name}
+        <Link to="/">浏览</Link> / <Link to={marketUrl}>DESIGN.md</Link> / {name}
       </div>
 
       <section className="detail-head">
@@ -126,10 +129,10 @@ export function DesignDetailPage() {
       </section>
 
       <nav className="tabs">
-        <NavLink to={base} end className={tabClass}>
+        <NavLink state={{ marketUrl }} to={base} end className={tabClass}>
           预览
         </NavLink>
-        <NavLink to={`${base}/content`} className={tabClass}>
+        <NavLink state={{ marketUrl }} to={`${base}/content`} className={tabClass}>
           内容
         </NavLink>
       </nav>
@@ -241,17 +244,7 @@ function ContentTab({ ns, name, version }: { ns: string; name: string; version: 
     <div className="panel">
       <div className="file-preview-head">
         <span className="path">DESIGN.md</span>
-        <span className="preview-switch">
-          <span
-            className={mdMode === "preview" ? "active" : ""}
-            onClick={() => setMdMode("preview")}
-          >
-            预览
-          </span>
-          <span className={mdMode === "raw" ? "active" : ""} onClick={() => setMdMode("raw")}>
-            Raw
-          </span>
-        </span>
+        <MarkdownModeSwitch mode={mdMode} onChange={setMdMode} />
       </div>
       {mdMode === "preview" ? (
         <div className="md-view">

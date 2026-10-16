@@ -147,8 +147,8 @@ export function UsersPage() {
         </div>
       )}
 
-      <section className="panel">
-        <table className="table">
+      <section className="panel table-panel">
+        <table className="table responsive-table">
           <thead>
             <tr>
               <th>用户</th>
@@ -177,7 +177,7 @@ export function UsersPage() {
                 const busy = acting === u.id;
                 return (
                   <tr key={u.id}>
-                    <td>
+                    <td data-label="用户">
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                         <span className="avatar">
                           {u.has_avatar ? (
@@ -194,7 +194,7 @@ export function UsersPage() {
                         </div>
                       </div>
                     </td>
-                    <td>
+                    <td data-label="角色">
                       {u.is_founder && <span className="badge-role founder">创始</span>}{" "}
                       {u.role === "admin" ? (
                         <span className="badge-role admin">管理员</span>
@@ -202,11 +202,11 @@ export function UsersPage() {
                         !u.is_founder && <span className="badge-role user">用户</span>
                       )}
                     </td>
-                    <td className="muted">{formatDate(u.created_at)}</td>
-                    <td>
+                    <td data-label="注册时间" className="muted">{formatDate(u.created_at)}</td>
+                    <td data-label="状态">
                       <span className={`status-dot ${st.cls}`}>{st.label}</span>
                     </td>
-                    <td style={{ whiteSpace: "nowrap" }}>
+                    <td data-label="操作" style={{ whiteSpace: "nowrap" }}>
                       {u.is_founder ? (
                         <button className="btn btn-outline btn-sm" disabled={busy} onClick={() => resetPassword(u)}>
                           重置密码

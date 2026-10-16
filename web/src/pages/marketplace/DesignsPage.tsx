@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { designsApi } from "../../api/designs";
@@ -8,13 +8,10 @@ import type { ListResult } from "../../api/client";
 import { ApiError } from "../../api/client";
 import { DesignCard } from "../../components/DesignCard";
 import { Pagination } from "../../components/Pagination";
+import { useMarketFilters } from "../../hooks/useMarketFilters";
 
 export function DesignsPage() {
-  const [input, setInput] = useState("");
-  const [q, setQ] = useState("");
-  const [tag, setTag] = useState("");
-  const [official, setOfficial] = useState(false);
-  const [page, setPage] = useState(1);
+  const { q, tag, official, page, input, setInput, tags, tagsError, retryTags, search: applySearch, pickTag, toggleOfficial, setPage } = useMarketFilters("designs");
   const [data, setData] = useState<ListResult<DesignListItem> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -34,21 +31,9 @@ export function DesignsPage() {
     };
   }, [q, tag, official, page]);
 
-  const tags = useMemo(() => {
-    const set = new Set<string>();
-    data?.items.forEach((d) => d.tags.forEach((t) => set.add(t)));
-    return [...set];
-  }, [data]);
-
   function search(e: FormEvent) {
     e.preventDefault();
-    setPage(1);
-    setQ(input.trim());
-  }
-
-  function pickTag(t: string) {
-    setPage(1);
-    setTag(t === tag ? "" : t);
+    applySearch();
   }
 
   return (
@@ -61,7 +46,8 @@ export function DesignsPage() {
         <form className="searchbar" onSubmit={search}>
           <span>⌕</span>
           <input
-            type="text"
+            aria-label="搜索设计系统"
+            type="search"
             placeholder="搜索设计系统,例如 dark theme、docs、dashboard…"
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -85,6 +71,7 @@ export function DesignsPage() {
           <button
             key={t}
             className={`chip${tag === t ? " active" : ""}`}
+            aria-pressed={tag === t}
             onClick={() => pickTag(t)}
           >
             {t}
@@ -92,14 +79,14 @@ export function DesignsPage() {
         ))}
         <button
           className={`chip${official ? " active" : ""}`}
-          onClick={() => {
-            setPage(1);
-            setOfficial(!official);
-          }}
+          aria-pressed={official}
+          onClick={toggleOfficial}
         >
           ✦ 仅官方
         </button>
       </div>
+
+      {tagsError && <p className="filter-notice" role="status">标签加载失败。<button type="button" className="text-button" onClick={retryTags}>重试</button></p>}
 
       {error && (
         <div className="alert err" style={{ marginBottom: 20 }}>

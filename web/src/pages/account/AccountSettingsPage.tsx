@@ -241,8 +241,7 @@ export function AccountSettingsPage() {
                 />
               </div>
               <div className="hint">
-                支持 PNG / JPG,最大 5 MB;选择后可在弹窗中拖动、缩放裁剪,上传后服务端生成 32 / 64 / 128px
-                缩略图。
+                支持 PNG / JPG，最大 5 MB；选择图片后可拖动、缩放并裁剪。
               </div>
             </div>
             <div className="field">

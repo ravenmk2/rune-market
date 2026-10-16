@@ -39,6 +39,7 @@ func NewSkillsHandler(h *hub.Skills, settings *store.SettingStore, blobs *blob.S
 // apiAuth (which must carry RequireAuth).
 func (h *SkillsHandler) RegisterRoutes(api, apiAuth *gin.RouterGroup) {
 	api.GET("/skills", h.list)
+	api.GET("/skills/tags", h.tags)
 	api.GET("/skills/:ns/:name", h.detail)
 	api.GET("/skills/:ns/:name/versions", h.versions)
 	api.GET("/skills/:ns/:name/versions/:ver", h.version)
@@ -53,6 +54,19 @@ func (h *SkillsHandler) RegisterRoutes(api, apiAuth *gin.RouterGroup) {
 	apiAuth.POST("/skills/:id/takedown", h.takedown)
 	apiAuth.POST("/skills/:id/restore", h.restore)
 	apiAuth.DELETE("/skills/:id", h.delete)
+}
+
+func (h *SkillsHandler) tags(c *gin.Context) {
+	if !h.requireBrowseAuth(c) {
+		return
+	}
+	names, err := h.hub.Tags(c.Request.Context())
+	if err != nil {
+		h.logger.WithError(err).Error("skills: list tags failed")
+		auth.Error(c, http.StatusInternalServerError, "internal", "failed to list tags")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": names})
 }
 
 // --- response shaping (contract shapes) ---

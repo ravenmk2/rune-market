@@ -26,6 +26,35 @@ func NewTagStore(db DBTX, dialect string) *TagStore {
 	return &TagStore{db: db, dialect: dialect}
 }
 
+func (s *TagStore) PublishedSkillTags(ctx context.Context) ([]string, error) {
+	return s.publishedTags(ctx, "skill", "skill_tag", "skill_id")
+}
+
+func (s *TagStore) PublishedDesignTags(ctx context.Context) ([]string, error) {
+	return s.publishedTags(ctx, "designmd", "designmd_tag", "designmd_id")
+}
+
+// Only published artifacts contribute to the public filter vocabulary.
+func (s *TagStore) publishedTags(ctx context.Context, entity, link, ownerCol string) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT t.name FROM tag t
+		JOIN `+link+` lt ON lt.tag_id = t.id
+		JOIN `+entity+` a ON a.id = lt.`+ownerCol+`
+		WHERE a.status = 'published' ORDER BY t.name`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	names := []string{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		names = append(names, name)
+	}
+	return names, rows.Err()
+}
+
 // GetOrCreate returns the id of the tag with the given name.
 func (s *TagStore) GetOrCreate(ctx context.Context, name string) (string, error) {
 	var id string

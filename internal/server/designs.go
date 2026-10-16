@@ -39,6 +39,7 @@ func (h *DesignsHandler) RegisterRoutes(r *gin.Engine, api, apiAuth *gin.RouterG
 	r.GET("/images/:name", h.serveImage)
 
 	api.GET("/designs", h.list)
+	api.GET("/designs/tags", h.tags)
 	api.GET("/designs/:ns/:name", h.detail)
 	api.GET("/designs/:ns/:name/versions", h.versions)
 	api.GET("/designs/:ns/:name/versions/:ver", h.version)
@@ -53,6 +54,19 @@ func (h *DesignsHandler) RegisterRoutes(r *gin.Engine, api, apiAuth *gin.RouterG
 	apiAuth.POST("/designs/:id/takedown", h.takedown)
 	apiAuth.POST("/designs/:id/restore", h.restore)
 	apiAuth.DELETE("/designs/:id", h.delete)
+}
+
+func (h *DesignsHandler) tags(c *gin.Context) {
+	if !h.requireBrowseAuth(c) {
+		return
+	}
+	names, err := h.hub.Tags(c.Request.Context())
+	if err != nil {
+		h.logger.WithError(err).Error("designs: list tags failed")
+		auth.Error(c, http.StatusInternalServerError, "internal", "failed to list tags")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": names})
 }
 
 // --- response shaping (contract shapes) ---
