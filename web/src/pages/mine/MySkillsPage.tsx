@@ -134,7 +134,7 @@ export function MySkillsPage() {
                 return (
                   <tr key={s.id}>
                     <td data-label="名称">
-                      <Link to={`/s/${s.namespace}/${s.name}`}>{s.display_name || s.name}</Link>{" "}
+                      <Link to={`/s/${s.namespace}/${s.name}`}>{s.display_name || s.name}</Link>
                       {s.official && <OfficialBadge />}
                       <div className="skill-original-name">{s.name}</div>
                     </td>

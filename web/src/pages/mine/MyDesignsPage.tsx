@@ -145,7 +145,7 @@ export function MyDesignsPage() {
                                 display: "flex",
                                 alignItems: "center",
                                 justifyContent: "center",
-                                fontFamily: "var(--serif)",
+                                fontFamily: "var(--sans)",
                                 color: "var(--faint)",
                               }}
                             >
@@ -154,7 +154,7 @@ export function MyDesignsPage() {
                           )}
                         </span>
                         <span className="mono">
-                          <Link to={`/d/${d.namespace}/${d.name}`}>{d.name}</Link>{" "}
+                          <Link to={`/d/${d.namespace}/${d.name}`}>{d.name}</Link>
                           {d.official && <OfficialBadge />}
                         </span>
                       </div>

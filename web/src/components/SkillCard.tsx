@@ -19,7 +19,7 @@ export function SkillCard({ skill }: { skill: SkillListItem }) {
         <SkillIcon url={skill.icon_url} lazy />
         <div>
           <div className="card-title">
-            <Link className="card-main-link" to={`/s/${skill.namespace}/${skill.name}`} state={{ marketUrl: location.pathname + location.search }}>{skill.display_name || skill.name}</Link> {skill.official && <OfficialBadge />}
+            <Link className="card-main-link" to={`/s/${skill.namespace}/${skill.name}`} state={{ marketUrl: location.pathname + location.search }}>{skill.display_name || skill.name}</Link>{skill.official && <OfficialBadge />}
           </div>
           <div className="skill-original-name">{skill.name}</div>
           <div className="card-owner">

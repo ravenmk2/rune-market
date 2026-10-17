@@ -17,7 +17,7 @@ export function DesignCard({ design }: { design: DesignListItem }) {
       <div className="card-top">
         <div>
           <div className="card-title">
-            <Link className="card-main-link" to={`/d/${design.namespace}/${design.name}`} state={{ marketUrl: location.pathname + location.search }}>{design.name}</Link> {design.official && <OfficialBadge />}
+            <Link className="card-main-link" to={`/d/${design.namespace}/${design.name}`} state={{ marketUrl: location.pathname + location.search }}>{design.name}</Link>{design.official && <OfficialBadge />}
           </div>
           <div className="card-owner">
             <Link className="owner-link" to={`/u/${design.owner.username}`}>

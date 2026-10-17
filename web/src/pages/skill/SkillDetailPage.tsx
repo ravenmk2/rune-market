@@ -88,7 +88,7 @@ export function SkillDetailPage() {
       <section className="detail-head">
         <SkillIcon url={skill.icon_url} className="detail-icon" />
         <div>
-          <h1>
+          <h1 className="artifact-title">
             {skill.display_name || name} {skill.official && <OfficialBadge />}
           </h1>
           <div className="skill-original-name">{ns}/{name}</div>

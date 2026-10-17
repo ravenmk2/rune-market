@@ -137,7 +137,7 @@ export function AdminDesignsPage() {
                                 display: "flex",
                                 alignItems: "center",
                                 justifyContent: "center",
-                                fontFamily: "var(--serif)",
+                                fontFamily: "var(--sans)",
                                 color: "var(--faint)",
                               }}
                             >
@@ -149,7 +149,7 @@ export function AdminDesignsPage() {
                           <Link to={`/d/${d.namespace}/${d.name}`}>
                             <span className="ns">{d.namespace}/</span>
                             {d.name}
-                          </Link>{" "}
+                          </Link>
                           {d.official && <OfficialBadge />}
                         </span>
                       </div>

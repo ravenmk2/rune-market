@@ -127,7 +127,7 @@ export function AdminSkillsPage() {
                     <td data-label="名称">
                       <Link to={`/s/${s.namespace}/${s.name}`}>
                         {s.display_name || s.name}
-                      </Link>{" "}
+                      </Link>
                       {s.official && <OfficialBadge />}
                       <div className="skill-original-name">{s.namespace}/{s.name}</div>
                     </td>

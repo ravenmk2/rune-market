@@ -85,7 +85,7 @@ export function DesignDetailPage() {
           </div>
         )}
         <div>
-          <h1>
+          <h1 className="artifact-title">
             <span className="ns">{ns} /</span> {name} {design.official && <OfficialBadge />}
           </h1>
           <p className="detail-sub">{design.summary}</p>

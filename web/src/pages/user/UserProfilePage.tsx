@@ -67,7 +67,7 @@ export function UserProfilePage() {
           )}
         </div>
         <div>
-          <h1 style={{ fontFamily: "var(--serif)", fontWeight: 500 }}>
+          <h1>
             {displayName}{" "}
             <span className="muted" style={{ fontSize: 16, fontWeight: 400 }}>
               @{user.username}
@@ -87,7 +87,7 @@ export function UserProfilePage() {
 
       {skills.length > 0 && (
         <>
-          <h2 style={{ fontFamily: "var(--serif)", fontSize: 22, fontWeight: 500, margin: "26px 0 14px" }}>
+          <h2 style={{ fontSize: 22, margin: "26px 0 14px" }}>
             Skills
           </h2>
           <section className="grid">
@@ -100,7 +100,7 @@ export function UserProfilePage() {
 
       {designs.length > 0 && (
         <>
-          <h2 style={{ fontFamily: "var(--serif)", fontSize: 22, fontWeight: 500, margin: "34px 0 14px" }}>
+          <h2 style={{ fontSize: 22, margin: "34px 0 14px" }}>
             DESIGN.md
           </h2>
           <section className="grid">
