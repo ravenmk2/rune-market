@@ -11,7 +11,8 @@ import { PermList } from "../../components/PermList";
 import { FileTree } from "../../components/FileTree";
 import { CodeView } from "../../components/CodeView";
 import { MarkdownView } from "../../components/MarkdownView";
-import { MarkdownModeSwitch } from "../../components/MarkdownModeSwitch";
+import { FileContentActions } from "../../components/FileContentActions";
+import { useCodeWrap } from "../../hooks/useCodeWrap";
 import { useAuth } from "../../context/AuthContext";
 import { skillPublishVersionPath } from "../../utils/paths";
 import { useTitle } from "../../hooks/useTitle";
@@ -283,6 +284,7 @@ function OverviewTab({ skill, version }: { skill: SkillDetail; version?: Version
 /* ---------- 文件 tab:目录树 + 文本预览 ---------- */
 
 function FilesTab({ ns, name, version }: { ns: string; name: string; version: string }) {
+  const [wrap, setWrap] = useCodeWrap();
   const previewHead = useRef<HTMLDivElement>(null);
   const [files, setFiles] = useState<FileEntry[] | null>(null);
   const [active, setActive] = useState<string | null>(null);
@@ -365,18 +367,21 @@ function FilesTab({ ns, name, version }: { ns: string; name: string; version: st
         <div className="file-preview">
           <div className="file-preview-head" ref={previewHead} tabIndex={-1}>
             <span className="path">{active}</span>
-            {isMd && (
-              <MarkdownModeSwitch mode={mdMode} onChange={setMdMode} />
-            )}
+            <FileContentActions key={`${version}:${active}:${content ? "ready" : "loading"}`}
+              content={content?.content_type === "text" ? content.content : undefined}
+              binary={content?.content_type === "binary"} markdown={isMd}
+              mode={mdMode} onModeChange={setMdMode} wrap={wrap} onWrapChange={setWrap} />
           </div>
           {content ? (
             content.content_type === "text" ? (
-              isMd && mdMode === "preview" ? (
+              content.content === undefined ? (
+                <div className="codebox muted">文件超过 1 MB，无法预览或复制，请下载技能包查看。</div>
+              ) : isMd && mdMode === "preview" ? (
                 <div className="md-view">
                   <MarkdownView markdown={content.content} />
                 </div>
               ) : (
-                <CodeView content={content.content} path={content.path} />
+                <CodeView content={content.content} path={content.path} wrap={wrap} />
               )
             ) : (
               <div className="codebox muted">二进制文件,无法预览。</div>

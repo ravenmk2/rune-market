@@ -10,7 +10,8 @@ import { useTitle } from "../../hooks/useTitle";
 import { PreviewSwitch } from "../../components/PreviewSwitch";
 import type { PreviewMode } from "../../components/PreviewSwitch";
 import { MarkdownView } from "../../components/MarkdownView";
-import { MarkdownModeSwitch } from "../../components/MarkdownModeSwitch";
+import { FileContentActions } from "../../components/FileContentActions";
+import { useCodeWrap } from "../../hooks/useCodeWrap";
 import { CodeView } from "../../components/CodeView";
 import { formatCount, formatDate, shortSha } from "../../utils/format";
 
@@ -207,6 +208,7 @@ function PreviewTab({ version }: { version?: DesignVersionMeta }) {
 /* ---------- 内容 tab ---------- */
 
 function ContentTab({ ns, name, version }: { ns: string; name: string; version: string }) {
+  const [wrap, setWrap] = useCodeWrap();
   const [content, setContent] = useState<string | null>(null);
   const [mdMode, setMdMode] = useState<"preview" | "raw">("preview");
   const [error, setError] = useState("");
@@ -244,14 +246,15 @@ function ContentTab({ ns, name, version }: { ns: string; name: string; version: 
     <div className="panel">
       <div className="file-preview-head">
         <span className="path">DESIGN.md</span>
-        <MarkdownModeSwitch mode={mdMode} onChange={setMdMode} />
+        <FileContentActions key={version} content={content} markdown
+          mode={mdMode} onModeChange={setMdMode} wrap={wrap} onWrapChange={setWrap} />
       </div>
       {mdMode === "preview" ? (
         <div className="md-view">
           <MarkdownView markdown={content} />
         </div>
       ) : (
-        <CodeView content={content} path="DESIGN.md" />
+        <CodeView content={content} path="DESIGN.md" wrap={wrap} />
       )}
     </div>
   );

@@ -85,7 +85,7 @@ export interface FileContent {
   path: string;
   size: number;
   content_type: "text" | "binary";
-  content: string;
+  content?: string;
 }
 
 /** 我的制品列表项:含制品 id 供下架/编辑/删除操作 */

@@ -6,7 +6,7 @@ export function MarkdownModeSwitch({ mode, onChange }: {
     {(["preview", "raw"] as const).map((value) => (
       <button key={value} type="button" aria-pressed={mode === value}
         className={mode === value ? "active" : ""} onClick={() => onChange(value)}>
-        {value === "preview" ? "预览" : "Raw"}
+        {value === "preview" ? "预览" : "源码"}
       </button>
     ))}
   </div>;
