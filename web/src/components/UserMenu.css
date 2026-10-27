@@ -11,3 +11,10 @@
 .user-menu-links svg { flex-shrink: 0; }
 .user-menu-theme { border-top: 1px solid var(--line); padding: 7px 0 2px; }
 .user-menu-label { padding: 3px 10px 5px; color: var(--muted); font-size: 12px; }
+.user-menu-logout { border-top: 1px solid var(--line); margin-top: 5px; padding-top: 5px; }
+.user-menu-logout button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: 0; border-radius: 4px; background: transparent; color: var(--ink); font: inherit; font-size: 14px; cursor: pointer; }
+.user-menu-logout button:hover { background: var(--sand); }
+.logout-dialog { margin: auto; color: var(--ink); }
+.logout-dialog::backdrop { background: var(--overlay); }
+.logout-dialog p { margin-bottom: 20px; }
+.logout-dialog .logout-error { color: var(--err); }

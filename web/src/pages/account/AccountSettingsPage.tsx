@@ -9,7 +9,7 @@ import { Avatar } from "../../components/Avatar";
 import { AvatarCropDialog } from "../../components/AvatarCropDialog";
 
 export function AccountSettingsPage() {
-  const { user, loading: authLoading, refresh, logout } = useAuth();
+  const { user, loading: authLoading, refresh } = useAuth();
   const navigate = useNavigate();
 
   const fileRef = useRef<HTMLInputElement>(null);
@@ -180,7 +180,7 @@ export function AccountSettingsPage() {
       return;
     }
     // 会话随账号删除失效,清理本地状态并回首页
-    await logout();
+    await refresh();
     navigate("/");
   }
 

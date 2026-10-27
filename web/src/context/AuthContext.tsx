@@ -34,12 +34,9 @@ export function AuthProvider({ children, enabled = true }: { children: ReactNode
   }, []);
 
   const logout = useCallback(async () => {
-    try {
-      await authApi.logout();
-    } finally {
-      setUser(null);
-      navigate("/");
-    }
+    await authApi.logout();
+    setUser(null);
+    navigate("/", { replace: true });
   }, [navigate]);
 
   useEffect(() => {
