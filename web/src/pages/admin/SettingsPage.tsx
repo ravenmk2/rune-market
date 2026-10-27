@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { useUpdateSite } from "../../context/SiteContext";
 import { adminApi } from "../../api/admin";
 import type { Settings } from "../../api/admin";
 import { ApiError } from "../../api/client";
@@ -17,6 +18,7 @@ function asBool(v: unknown): boolean {
 }
 
 export function SettingsPage() {
+  const updateSite = useUpdateSite();
   const [loaded, setLoaded] = useState(false);
   const [siteName, setSiteName] = useState("");
   const [siteDescription, setSiteDescription] = useState("");
@@ -83,7 +85,8 @@ export function SettingsPage() {
         anonymous_browse: anonBrowse,
         anonymous_download: anonDownload,
       };
-      await adminApi.saveSettings(patch);
+      const settings = await adminApi.saveSettings(patch);
+      updateSite({ site_name: settings.site_name, site_description: settings.site_description, site_tagline: settings.site_tagline });
       setSaved(true);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "保存失败,请稍后重试");
@@ -138,7 +141,7 @@ export function SettingsPage() {
             />
           </div>
           <div className="field">
-            <label htmlFor="f-sitedesc">站点描述</label>
+            <label htmlFor="f-sitedesc">站点描述（页面元描述）</label>
             <input
               className="input"
               id="f-sitedesc"

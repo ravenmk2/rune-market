@@ -1,0 +1,13 @@
+.user-menu { position: relative; flex-shrink: 0; }
+.user-menu-trigger { display: grid; place-items: center; padding: 3px; border: 1px solid transparent; border-radius: 50%; background: transparent; color: var(--ink); cursor: pointer; }
+.user-menu-trigger:hover, .user-menu-trigger[aria-expanded="true"] { border-color: var(--line-strong); background: var(--sand); }
+.user-menu-panel { position: absolute; right: 0; top: calc(100% + 10px); z-index: 50; width: 236px; max-width: calc(100vw - 32px); padding: 6px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow-popover); }
+.user-menu-identity { display: flex; flex-direction: column; padding: 10px 12px 13px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.user-menu-identity strong { font-size: 14px; font-weight: 600; }
+.user-menu-identity > span { color: var(--muted); font-size: 12px; }
+.user-menu-links { padding: 5px 0; }
+.user-menu-links a { display: flex; align-items: center; gap: 10px; padding: 9px 10px; font-size: 14px; color: var(--ink); border-radius: 4px; }
+.user-menu-links a:hover { background: var(--sand); }
+.user-menu-links svg { flex-shrink: 0; }
+.user-menu-theme { border-top: 1px solid var(--line); padding: 7px 0 2px; }
+.user-menu-label { padding: 3px 10px 5px; color: var(--muted); font-size: 12px; }

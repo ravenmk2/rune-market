@@ -10,11 +10,11 @@ export function SkillIcon({ url, className = "card-icon", lazy = false }: {
         <img src={url} alt="" loading={lazy ? "lazy" : undefined} />
       ) : (
         <svg width="100%" height="100%" viewBox="0 0 48 48" fill="none" aria-hidden="true">
-          <rect width="48" height="48" rx="11" fill="#F6E9E2" />
-          <g stroke="#C15F3C" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M24 12H16a3 3 0 0 0-3 3v18a3 3 0 0 0 3 3h16a3 3 0 0 0 3-3V23" />
-            <path d="M19 23h7M19 29h10" />
-            <path d="m33 9 1.4 3.6L38 14l-3.6 1.4L33 19l-1.4-3.6L28 14l3.6-1.4L33 9Z" fill="#F6E9E2" />
+          <rect width="48" height="48" rx="11" fill="var(--skill-icon-bg)" />
+          <g stroke="var(--skill-icon-fg)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14 11h15a5 5 0 0 1 5 5v16M14 11a4 4 0 0 0-4 4v4h8v-4a4 4 0 0 0-4-4Zm4 8v14a5 5 0 0 0 5 5" />
+            <path d="M23 38h10a5 5 0 0 0 5-5v-1H28v1a5 5 0 0 1-5 5Z" />
+            <path d="M22 21h8M22 26h6" />
           </g>
         </svg>
       )}

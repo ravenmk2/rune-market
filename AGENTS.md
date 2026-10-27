@@ -19,3 +19,4 @@ rune-market/
 文档变化时同步更新
 
 - docs/design.md:详细设计(数据模型、API、校验管线、工程化、里程碑),开发依据
+- docs/prototypes/market-theme.html:纸白暖灰风格静态样式提案,含明暗主题与技能图标配色对比,非正式页面

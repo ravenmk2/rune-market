@@ -1,7 +1,8 @@
+import { ThemeSwitch } from "./ThemeSwitch";
 import { Link, NavLink } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useSite } from "../context/SiteContext";
-import { Avatar } from "./Avatar";
+import { UserMenu } from "./UserMenu";
 
 function navClass({ isActive }: { isActive: boolean }) {
   return isActive ? "active" : "";
@@ -33,16 +34,10 @@ export function Topbar() {
         </nav>
         <div className="topbar-actions">
           {user ? (
-            <>
-              <Link className="btn btn-outline btn-sm" to="/mine/skills">
-                我的发布
-              </Link>
-              <Link to="/account" title={user.nickname || user.username}>
-                <Avatar user={user} />
-              </Link>
-            </>
+            <UserMenu user={user} />
           ) : (
             <>
+              <ThemeSwitch />
               <Link className="btn btn-outline btn-sm" to="/login">
                 登录
               </Link>

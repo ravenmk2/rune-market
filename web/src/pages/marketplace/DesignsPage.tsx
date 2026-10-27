@@ -1,3 +1,4 @@
+import { ModuleArtwork } from "../../components/ModuleArtwork";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
@@ -15,7 +16,7 @@ export function DesignsPage() {
   const [data, setData] = useState<ListResult<DesignListItem> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const tagline = useSite().site_tagline || "";
+  const tagline = useSite().site_tagline?.trim() || "";
 
   useEffect(() => {
     let cancelled = false;
@@ -38,9 +39,9 @@ export function DesignsPage() {
 
   return (
     <main className="container">
-      <section className="hero">
+      <section className="hero hero-with-modules">
         <h1>
-          智能体<em>技能</em>与<em>设计系统</em>商店
+          让好方法，<wbr />成为下一次<em>创造</em>的起点。
         </h1>
         {tagline && <p>{tagline}</p>}
         <form className="searchbar" onSubmit={search}>
@@ -53,6 +54,7 @@ export function DesignsPage() {
             onChange={(e) => setInput(e.target.value)}
           />
         </form>
+        <ModuleArtwork />
       </section>
 
       <nav className="tabs">

@@ -41,7 +41,7 @@ export function Dropzone({ accept, title, sub, disabled, onFile }: DropzoneProps
           if (!disabled) inputRef.current?.click();
         }
       }}
-      style={over ? { borderColor: "var(--accent)", background: "#FDFBF8" } : undefined}
+      style={over ? { borderColor: "var(--accent)", background: "var(--hover)" } : undefined}
       onClick={() => !disabled && inputRef.current?.click()}
       onDragOver={(e) => {
         e.preventDefault();

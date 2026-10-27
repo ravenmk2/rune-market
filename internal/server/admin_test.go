@@ -483,3 +483,22 @@ func TestAdminUsersSearch(t *testing.T) {
 		t.Fatal("password_hash leaked")
 	}
 }
+
+func TestSiteTaglineDefaultAndExplicitEmpty(t *testing.T) {
+	env := newAdminEnv(t)
+	w := env.do(t, http.MethodGet, "/api/v1/site", "", nil, nil)
+	if got := decode(t, w)["site_tagline"]; got != "发现实用的智能体技能与设计系统，让好方法触手可及。" {
+		t.Fatalf("default tagline: %v", got)
+	}
+	for _, value := range []string{"自定义标语", ""} {
+		body := `{"settings":{"site_tagline":"` + value + `"}}`
+		w = env.do(t, http.MethodPut, "/api/v1/admin/settings", body, env.cookie, nil)
+		if w.Code != http.StatusOK {
+			t.Fatalf("save tagline: %d", w.Code)
+		}
+		w = env.do(t, http.MethodGet, "/api/v1/site", "", nil, nil)
+		if got := decode(t, w)["site_tagline"]; got != value {
+			t.Fatalf("tagline: got %v, want %q", got, value)
+		}
+	}
+}

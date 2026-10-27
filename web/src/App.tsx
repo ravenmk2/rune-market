@@ -75,7 +75,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/setup" replace />} />
         </Routes>
       ) : (
-        <SiteProvider info={site}>
+        <SiteProvider info={site} onUpdate={patch => setSite(current => ({ ...current, ...patch }))}>
           <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<SkillsPage />} />

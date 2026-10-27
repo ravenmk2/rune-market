@@ -1,14 +1,16 @@
-import { Link, Navigate, NavLink, Outlet } from "react-router-dom";
+import { UserMenu } from "../../components/UserMenu";
+import { Link, Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import { Avatar } from "../../components/Avatar";
 
 function sideClass({ isActive }: { isActive: boolean }) {
   return isActive ? "active" : "";
 }
 
-/** 管理面板布局:通栏顶栏 + 侧栏 + 居中限宽内容区;仅 admin 可达(后端仍有强制校验) */
+/** 管理面板布局:概览与列表自适应宽度，表单居中限宽;仅 admin 可达。 */
 export function AdminLayout() {
   const { user, loading } = useAuth();
+  const { pathname } = useLocation();
+  const fluid = ["/admin", "/admin/users", "/admin/skills", "/admin/designs"].includes(pathname.replace(/\/+$/, ""));
 
   if (loading) {
     return (
@@ -38,7 +40,7 @@ export function AdminLayout() {
             <Link className="btn btn-outline btn-sm" to="/">
               返回商店
             </Link>
-            <Avatar user={user} />
+            <UserMenu user={user} />
           </div>
         </div>
       </header>
@@ -63,7 +65,7 @@ export function AdminLayout() {
           </NavLink>
         </aside>
 
-        <main className="admin-main">
+        <main className={`admin-main${fluid ? " admin-main-fluid" : ""}`}>
           <Outlet />
         </main>
       </div>

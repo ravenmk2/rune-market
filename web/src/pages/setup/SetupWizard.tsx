@@ -1,3 +1,4 @@
+import { ThemeSwitch } from "../../components/ThemeSwitch";
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { ApiError } from "../../api/client";
@@ -43,6 +44,7 @@ export function SetupWizard({ initialStep = 1 }: { initialStep?: number }) {
 
   return (
     <main className="setup-wrap">
+      <div className="setup-theme"><ThemeSwitch /></div>
       <div className="setup-brand">
         <span className="brand-mark">ᚱ</span>RuneMarket
       </div>

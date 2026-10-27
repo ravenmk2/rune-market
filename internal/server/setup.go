@@ -30,7 +30,7 @@ const (
 var defaultSettings = map[string]string{
 	"site_name":          "RuneMarket",
 	"site_description":   "",
-	"site_tagline":       "",
+	"site_tagline":       "发现实用的智能体技能与设计系统，让好方法触手可及。",
 	"page_size":          "20",
 	"registration_mode":  "closed",
 	"artifact_review":    "none",

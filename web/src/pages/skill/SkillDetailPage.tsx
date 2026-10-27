@@ -184,7 +184,7 @@ function OverviewTab({ skill, version }: { skill: SkillDetail; version?: Version
         <h2>说明</h2>
         {desc ? (
           desc.split(/\n{2,}/).map((para, i) => (
-            <p key={i} style={{ margin: "10px 0", color: "#3B3A35", whiteSpace: "pre-wrap" }}>
+            <p key={i} style={{ margin: "10px 0", color: "var(--text)", whiteSpace: "pre-wrap" }}>
               {para}
             </p>
           ))
